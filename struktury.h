@@ -16,7 +16,8 @@ struct thread_data {
     int id;
     int fd;  // Deskryptor pliku FIFO
 };
-struct node {
-    int value;
-    struct node *next;
+
+struct Node {
+    struct passenger* passenger;
+    struct Node* next;
 };

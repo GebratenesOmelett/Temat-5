@@ -42,6 +42,7 @@ int main() {
         struct thread_data* data = (struct thread_data*)malloc(sizeof(struct thread_data));
         data->id = i + 1;  // ID wątku
         data->fd = fd;
+        //nie wysyłąj fd daj jako globalne
         if (pthread_create(&watki[i], NULL, createAndSendPassenger, data) != 0) {
             perror("Błąd przy tworzeniu wątku");
             return 1;

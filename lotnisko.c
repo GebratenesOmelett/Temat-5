@@ -52,9 +52,9 @@ void *securityControl(void *arg) {
 
         if (second_passenger) {
             if (second_passenger->passenger->baggage_weight > Md) {
-                printf("Wątek %ld: Za duży bagaż u pasażera %d", thread_id, second_passenger->passenger->id);
+                printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, second_passenger->passenger->id);
             }
-            printf("Wątek %ld przetwarza pasażera %d\n o plci %s\n", thread_id, second_passenger->passenger->id,&first_passenger->passenger->gender);
+            printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, second_passenger->passenger->id,&second_passenger->passenger->gender);
             free(second_passenger->passenger);
             free(second_passenger);
         }
@@ -122,7 +122,9 @@ int main() {
         } else {
             printf("Wszystkie wątki zajęte, dane oczekują w kolejce\n");
         }
-
+        pthread_mutex_lock(&list_mutex);
+        printf("sortowanie po frustracji\n");
+        pthread_mutex_unlock(&list_mutex);
     }
     for (int i = 0; i < 3; i++) {
         pthread_join(threads[i], NULL);

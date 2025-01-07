@@ -5,6 +5,7 @@ struct passenger{
     double baggage_weight;
     char gender;
     bool is_vip;
+    bool is_equipped;
     int frustration;
     int peoplePass;
 };

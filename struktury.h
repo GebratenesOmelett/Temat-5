@@ -11,6 +11,8 @@ struct passenger{
 };
 
 struct airplane{
+    int Md;
+    int amountOfPassengers;
 
 };
 struct thread_data {
@@ -25,5 +27,5 @@ struct Node {
 
 struct messagePassenger {
     long mtype;       // Typ komunikatu
-    int idPassenger;  // Treść komunikatu
+    int mvalue;  // Treść komunikatu
 };

@@ -2,13 +2,14 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <sys/msg.h>
 
 #define FIFO_NAME "passengerFifo"
 
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 int N = 4;
 struct Node *node = NULL;
-int semID;
+int semID, msgID;
 int occupied;
 sem_t thread_ready[3];
 int Md;
@@ -21,15 +22,26 @@ static void addFrustration(struct Node* head);
 static void *securityControl(void *arg);
 
 int main() {
-    key_t klucz;
+    key_t kluczA, kluczB;
     pthread_t threads[3];
     Md = randNumber(100);
     printf("limit bagażu to %d", Md);
-    if ((klucz = ftok(".", 'A')) == -1) {
+    if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
     }
-    semID = alokujSemafor(klucz, N, IPC_CREAT | 0666);
+    semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
+
+    if ((kluczB = ftok(".", 'C')) == -1) {
+        printf("Blad ftok (C)\n");
+        exit(2);
+    }
+    msgID= msgget(kluczB, IPC_CREAT | 0666);
+    if(msgID == -1){
+        printf("blad kolejki komunikatow lotnisko\n");
+        exit(1);
+    }
+
     waitSemafor(semID, 0, 0);
 
     fifoSend = open(FIFO_NAME, O_RDONLY);
@@ -93,6 +105,8 @@ void *securityControl(void *arg) {
 
         pthread_mutex_lock(&list_mutex);
 
+        struct messagePassenger messageFirst;
+        struct messagePassenger messageSecond;
         // Pobranie pierwszego pasażera z listy
         struct Node *first_passenger = node;
         if (first_passenger) {
@@ -112,20 +126,54 @@ void *securityControl(void *arg) {
 
         // Przetwarzanie pasażerów
         if (first_passenger) {
+            messageFirst.mtype = first_passenger->passenger->id;
             if (first_passenger->passenger->baggage_weight > Md) {
                 printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, first_passenger->passenger->id);
-//                signalSemafor(semID, 3);
+                messageFirst.mvalue = 0;
+
+                if (msgsnd(msgID, &messageFirst, sizeof(messageFirst.mvalue), 0) == -1) {
+                    perror("msgsnd");
+                    exit(EXIT_FAILURE);
+                }
             }
-            printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, first_passenger->passenger->id,&first_passenger->passenger->gender);
+            else {
+                if (first_passenger->passenger->is_equipped == 1) {
+                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id", first_passenger->passenger->id);
+                } else {
+                    messageFirst.mvalue = 1;
+//                printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, first_passenger->passenger->id,
+//                       &first_passenger->passenger->gender);
+
+                    if (msgsnd(msgID, &messageFirst, sizeof(messageFirst.mvalue), 0) == -1) {
+                        perror("msgsnd");
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
             free(first_passenger->passenger);
             free(first_passenger);
         }
 
         if (second_passenger) {
+            messageSecond.mtype = second_passenger->passenger->id;
             if (second_passenger->passenger->baggage_weight > Md) {
                 printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, second_passenger->passenger->id);
+                messageSecond.mvalue = 0;
+
+                if (msgsnd(msgID, &messageSecond, sizeof(messageSecond.mvalue), 0) == -1) {
+                    perror("msgsnd");
+                    exit(EXIT_FAILURE);
+                }
+            } else {
+//                if()
+                messageSecond.mvalue = 1;
+//                printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, second_passenger->passenger->id,
+//                       &second_passenger->passenger->gender);
+                if (msgsnd(msgID, &messageSecond, sizeof(messageSecond.mvalue), 0) == -1) {
+                    perror("msgsnd");
+                    exit(EXIT_FAILURE);
+                }
             }
-            printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, second_passenger->passenger->id,&second_passenger->passenger->gender);
             free(second_passenger->passenger);
             free(second_passenger);
         }

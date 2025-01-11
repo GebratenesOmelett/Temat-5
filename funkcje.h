@@ -7,8 +7,10 @@
 #include "struktury.h"
 #include <sys/stat.h>
 #include <errno.h>
+#include <time.h>
 
 int randNumber(int x) {
+    srand(time(NULL));
     return (rand() % x) + 1;
 }
 char randGender(){
@@ -20,7 +22,7 @@ char randGender(){
         return 'F';
     }
 }
-bool randVip(){
+bool randRare(){
     int x = (rand() % 100) + 1;
     if(x <=5){
         return true;
@@ -38,6 +40,7 @@ void print_passenger(const struct passenger* p) {
     printf("VIP Status: %s\n", p->is_vip ? "Yes" : "No");
     printf("Frustration Level: %d\n", p->frustration);
     printf("People Passed: %d\n", p->peoplePass);
+    printf("Equipment status: %d\n", p->is_equipped);
 }
 struct Node* createNode(struct passenger data) {
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
@@ -105,9 +108,10 @@ void deleteNode(struct Node** head, int key) {
 void printList(struct Node* head) {
     struct Node* temp = head;
     while (temp != NULL) {
-        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d\n",
+        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d, Equipped: %s\n",
                temp->passenger->id, temp->passenger->baggage_weight, temp->passenger->gender,
-               temp->passenger->is_vip ? "Yes" : "No", temp->passenger->frustration, temp->passenger->peoplePass);
+               temp->passenger->is_vip ? "Yes" : "No", temp->passenger->frustration, temp->passenger->peoplePass,
+               temp->passenger->is_equipped ? "Yes" : "No");
         temp = temp->next;
     }
     printf("NULL\n");

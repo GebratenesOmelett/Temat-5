@@ -8,6 +8,7 @@ struct passenger{
     bool is_equipped;
     int frustration;
     int peoplePass;
+    int airplaneNumber;
 };
 
 struct airplane{

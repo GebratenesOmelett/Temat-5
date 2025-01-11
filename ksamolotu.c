@@ -7,11 +7,14 @@
 int numberOfPlanes;
 int semID, msgID, shmID;
 int *memory;
+int N = 4;
 
 void *airplaneControl(void *arg) {
     int i = *(int *)arg;
+    memory[i] = rand() % 100 + 1;
+
+    printf("samolot %d z wagą %d\n", i, memory[i]);
     free(arg);
-    printf("Hello from thread %d\n", i);
     return NULL;
 }
 
@@ -29,17 +32,26 @@ int main() {
 
     numberOfPlanes = randNumber(MAXAIRPLANES);
 
+    if ((kluczA = ftok(".", 'A')) == -1) {
+        printf("Blad ftok (A)\n");
+        exit(2);
+    }
+    semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
+    waitSemafor(semID, 2, 0); //brak jeżeli nie ma mainp
+
     if ((kluczC = ftok(".", 'D')) == -1) {
         printf("Blad ftok (D)\n");
         exit(2);
     }
-    shmID = shmget(kluczC, MAXAIRPLANES * sizeof(int), IPC_CREAT|0666);
+    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT|0666);
     if(shmID == -1){
         printf("blad pamieci dzielodznej samolotu\n");
         exit(1);
     }
     memory = (int*)shmat(shmID, NULL, 0);
-    memory[0] = numberOfPlanes;
+    memory[MAXAIRPLANES] = numberOfPlanes;
+    printf("ilosc samolotow to salomoty %d\n", numberOfPlanes);
+    signalSemafor(semID, 3);
 
     createFIFOs(numberOfPlanes);
 

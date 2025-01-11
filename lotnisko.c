@@ -5,11 +5,12 @@
 #include <sys/msg.h>
 
 #define FIFO_NAME "passengerFifo"
+#define MAXAIRPLANES 10
 
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 int N = 4;
 struct Node *node = NULL;
-int semID, msgID;
+int semID, msgID, shmID;
 int occupied;
 sem_t thread_ready[3];
 int Md;
@@ -22,10 +23,10 @@ static void addFrustration(struct Node* head);
 static void *securityControl(void *arg);
 
 int main() {
-    key_t kluczA, kluczB;
+    key_t kluczA, kluczB, kluczC;
     pthread_t threads[3];
     Md = randNumber(100);
-    printf("limit bagażu to %d", Md);
+    printf("limit bagażu to %d\n", Md);
     if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
@@ -39,6 +40,16 @@ int main() {
     msgID= msgget(kluczB, IPC_CREAT | 0666);
     if(msgID == -1){
         printf("blad kolejki komunikatow lotnisko\n");
+        exit(1);
+    }
+
+    if ((kluczC = ftok(".", 'D')) == -1) {
+        printf("Blad ftok (D)\n");
+        exit(2);
+    }
+    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT|0666);
+    if(shmID == -1){
+        printf("blad pamieci dzielodznej lotniska\n");
         exit(1);
     }
 

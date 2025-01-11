@@ -13,6 +13,10 @@ int randNumber(int x) {
     srand(time(NULL));
     return (rand() % x) + 1;
 }
+int getAirplane(int x){
+    srand(time(NULL));
+    return (rand() % x+1) + 0;
+}
 char randGender(){
     int x = (rand() % 100) + 1;
     if(x <=50){

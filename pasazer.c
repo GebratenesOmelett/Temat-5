@@ -16,6 +16,8 @@ static void *createAndSendPassenger(void *arg);
 int fifoSend;
 int N = 4;
 int semID, msgID, shmID;
+int *memory;
+int numberOfPlanes;
 
 int main() {
     key_t kluczA, kluczB, kluczC;
@@ -36,7 +38,7 @@ int main() {
         exit(2);
     }
     msgctl(msgID, IPC_RMID, NULL);
-    msgID= msgget(kluczB, IPC_CREAT  | 0666);
+    msgID= msgget(kluczB, IPC_CREAT | 0666);
     if(msgID == -1){
         printf("blad kolejki komunikatow pasazerow\n");
         exit(1);
@@ -46,12 +48,18 @@ int main() {
         printf("Blad ftok (D)\n");
         exit(2);
     }
-    shmID = shmget(kluczC, MAXAIRPLANES * sizeof(int), IPC_CREAT|IPC_EXCL|06666);
+    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT | 0666);
     if(shmID == -1){
         printf("blad pamieci dzielodznej pasazerow\n");
         exit(1);
     }
+    memory = (int*)shmat(shmID, NULL, 0);
     signalSemafor(semID, 0);
+    signalSemafor(semID, 2);
+    waitSemafor(semID, 3,0);
+
+    printf("ilosc samolotow %d\n",memory[MAXAIRPLANES]);
+    numberOfPlanes = memory[MAXAIRPLANES];
     fifoSend = open(FIFO_NAME, O_WRONLY);
     if (fifoSend == -1) {
         perror("open");
@@ -91,6 +99,7 @@ void *createAndSendPassenger(void *arg) {
     passenger->is_equipped = randRare();
     passenger->frustration = randNumber(20);
     passenger->peoplePass = 0;
+    passenger->airplaneNumber = getAirplane()
 //    sleep(passenger->id % 10000); // Symulacja pracy wątku
 //    printf("Wątek %d rozpoczął pracę!\n", passenger->id);
 //    print_passenger(passenger);

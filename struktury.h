@@ -22,3 +22,8 @@ struct Node {
     struct passenger* passenger;
     struct Node* next;
 };
+
+struct messagePassenger {
+    long mtype;       // Typ komunikatu
+    int idPassenger;  // Treść komunikatu
+};

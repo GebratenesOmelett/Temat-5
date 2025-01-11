@@ -6,44 +6,40 @@
 #include <stdlib.h>
 #include <fcntl.h>
 
-#define FIFO_NAME "passenger_fifo"
+#define FIFO_NAME "passengerFifo"
 
-static void* createAndSendPassenger(void* arg);
+static void *createAndSendPassenger(void *arg);
 
-int fd;
+int fifoSend;
 int N = 4;
+int semID;
 
 int main() {
     key_t klucz;
-    int semID;
-    if ( (klucz = ftok(".", 'A')) == -1 )
-    {
+    if ((klucz = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
     }
 
     semID = alokujSemafor(klucz, N, IPC_CREAT | 0666);
-    waitSemafor(semID,1,0);
+    waitSemafor(semID, 1, 0); //brak jeżeli nie ma mainp
     int liczba_watkow = 10000; // Liczba wątków do utworzenia
     pthread_t watki[liczba_watkow];
-    printf("git");
 
-    createNewFifo();
+    createNewFifo(FIFO_NAME);
+
     signalSemafor(semID, 0);
-    fd = open(FIFO_NAME, O_WRONLY);
-    if (fd == -1) {
+    fifoSend = open(FIFO_NAME, O_WRONLY);
+    if (fifoSend == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-    printf("git");
-    int i = 0;
 
-    while(1) {
-        struct thread_data* data = (struct thread_data*)malloc(sizeof(struct thread_data));
-        data->id = i + 1;  // ID wątku
-        data->fd = fd;
-        //nie wysyłąj fd daj jako globalne
-        if (pthread_create(&watki[i], NULL, createAndSendPassenger, data) != 0) {
+    int i = 0;
+    int id = 0;
+    while (1) {
+        id = i + 1; // Przypisanie wartości ID
+        if (pthread_create(&watki[i], NULL, createAndSendPassenger, &id) != 0) {
             perror("Błąd przy tworzeniu wątku");
             return 1;
         }
@@ -54,17 +50,15 @@ int main() {
         pthread_join(watki[j], NULL);
     }
 
-    close(fd);
+    close(fifoSend);
     printf("Proces pasazer zakończył pracę.\n");
     return 0;
 }
 
 // Funkcja, którą będą wykonywać wątki
-void* createAndSendPassenger(void* arg) {
-    struct thread_data* data = (struct thread_data*)arg; // Rzucenie wskaźnika na odpowiedni typ
-    int id = data->id;
-    int fd = data->fd;
-    struct passenger* passenger = (struct passenger*)malloc(sizeof(struct passenger));
+void *createAndSendPassenger(void *arg) {
+    int id = *((int *) arg);
+    struct passenger *passenger = (struct passenger *) malloc(sizeof(struct passenger));
     passenger->id = id;
     passenger->baggage_weight = randNumber(100);
     passenger->gender = randGender();
@@ -74,11 +68,19 @@ void* createAndSendPassenger(void* arg) {
 //    sleep(passenger->id % 10000); // Symulacja pracy wątku
 //    printf("Wątek %d rozpoczął pracę!\n", passenger->id);
 //    print_passenger(passenger);
-    if (write(fd, passenger, sizeof(struct passenger)) == -1) {
-        perror("write");
-        exit(EXIT_FAILURE);
+
+
+    while (1) {
+        if (write(fifoSend, passenger, sizeof(struct passenger)) == -1) {
+            perror("write");
+            exit(EXIT_FAILURE);
+        }
+
     }
+
     free(passenger);
     return NULL;
 }
+
+
 

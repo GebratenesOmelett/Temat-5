@@ -19,7 +19,7 @@ int main() {
 
     printf("Semafory gotowe!\n");
 
-    createNewFifo();
+//    createNewFifo();
     int pid = fork();
     if (pid == 0) {
         // Proces potomny uruchamia program `pasazer`

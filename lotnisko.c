@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <sys/msg.h>
+#include <sys/shm.h>
 
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
@@ -15,6 +16,7 @@ int occupied;
 sem_t thread_ready[3];
 int Md;
 int fifoSend;
+int *memory;
 // Wskaźnik zajętości wątku
 int thread_busy[3] = {0, 0, 0};
 
@@ -54,7 +56,7 @@ int main() {
     }
 
     waitSemafor(semID, 0, 0);
-
+    memory = (int*)shmat(shmID, NULL, 0);
     fifoSend = open(FIFO_NAME, O_RDONLY);
     if (fifoSend == -1) {
         perror("Błąd przy otwieraniu FIFO do odczytu");
@@ -138,7 +140,7 @@ void *securityControl(void *arg) {
         // Przetwarzanie pasażerów
         if (first_passenger) {
             messageFirst.mtype = first_passenger->passenger->id;
-            if (first_passenger->passenger->baggage_weight > Md) {
+            if (first_passenger->passenger->baggage_weight > memory[first_passenger->passenger->airplaneNumber]) {
                 printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, first_passenger->passenger->id);
                 messageFirst.mvalue = 0;
 
@@ -167,7 +169,7 @@ void *securityControl(void *arg) {
 
         if (second_passenger) {
             messageSecond.mtype = second_passenger->passenger->id;
-            if (second_passenger->passenger->baggage_weight > Md) {
+            if (second_passenger->passenger->baggage_weight > memory[second_passenger->passenger->airplaneNumber]) {
                 printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, second_passenger->passenger->id);
                 messageSecond.mvalue = 0;
 

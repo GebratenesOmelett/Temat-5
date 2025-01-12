@@ -10,6 +10,7 @@
 
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
+#define PREFIX "fifoplane"
 
 static void *createAndSendPassenger(void *arg);
 
@@ -99,7 +100,7 @@ void *createAndSendPassenger(void *arg) {
     passenger->is_equipped = randRare();
     passenger->frustration = randNumber(20);
     passenger->peoplePass = 0;
-    passenger->airplaneNumber = getAirplane()
+    passenger->airplaneNumber = getAirplane(numberOfPlanes);
 //    sleep(passenger->id % 10000); // Symulacja pracy wątku
 //    printf("Wątek %d rozpoczął pracę!\n", passenger->id);
 //    print_passenger(passenger);
@@ -122,6 +123,12 @@ void *createAndSendPassenger(void *arg) {
         sleep(randNumber(5));
     }
     printf("pasazer %d  czeka\n", passenger->id);
+    char fifoAirplane[20];
+    snprintf(fifoAirplane, sizeof(fifoAirplane), "%s%d",PREFIX, passenger->airplaneNumber);
+    if (write(fifoAirplane, passenger, sizeof(struct passenger)) == -1) {
+        perror("write");
+        exit(EXIT_FAILURE);
+
     free(passenger);
     return NULL;
 }

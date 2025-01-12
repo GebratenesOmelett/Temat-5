@@ -15,7 +15,7 @@ int randNumber(int x) {
 }
 int getAirplane(int x){
     srand(time(NULL));
-    return (rand() % x+1) + 0;
+    return (rand() % x);
 }
 char randGender(){
     int x = (rand() % 100) + 1;
@@ -45,6 +45,7 @@ void print_passenger(const struct passenger* p) {
     printf("Frustration Level: %d\n", p->frustration);
     printf("People Passed: %d\n", p->peoplePass);
     printf("Equipment status: %d\n", p->is_equipped);
+    printf("Airplane ticket: %d\n", p->airplaneNumber);
 }
 struct Node* createNode(struct passenger data) {
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
@@ -112,10 +113,10 @@ void deleteNode(struct Node** head, int key) {
 void printList(struct Node* head) {
     struct Node* temp = head;
     while (temp != NULL) {
-        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d, Equipped: %s\n",
+        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d, Equipped: %s, Airplane : %d\n",
                temp->passenger->id, temp->passenger->baggage_weight, temp->passenger->gender,
                temp->passenger->is_vip ? "Yes" : "No", temp->passenger->frustration, temp->passenger->peoplePass,
-               temp->passenger->is_equipped ? "Yes" : "No");
+               temp->passenger->is_equipped ? "Yes" : "No", temp->passenger->airplaneNumber);
         temp = temp->next;
     }
     printf("NULL\n");

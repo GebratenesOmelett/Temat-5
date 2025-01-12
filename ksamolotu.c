@@ -3,6 +3,7 @@
 #include "funkcje.h"
 #include <sys/shm.h>
 #define MAXAIRPLANES 10
+#define PREFIX "fifoplane"
 
 int numberOfPlanes;
 int semID, msgID, shmID;
@@ -19,9 +20,9 @@ void *airplaneControl(void *arg) {
 }
 
 void createFIFOs(int numberOfPlanes) {
-    char fifoName[256];
+    char fifoName[20];
     for (int i = 0; i < numberOfPlanes; i++) {
-        snprintf(fifoName, sizeof(fifoName), "fifoplane%d", i); // Tworzymy unikalną nazwę FIFO
+        snprintf(fifoName, sizeof(fifoName), "%s%d",PREFIX, i); // Tworzymy unikalną nazwę FIFO
         createNewFifo(fifoName);
         printf("FIFO %s created successfully.\n", fifoName);
     }

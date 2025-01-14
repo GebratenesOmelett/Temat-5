@@ -151,7 +151,7 @@ void *securityControl(void *arg) {
             }
             else {
                 if (first_passenger->passenger->is_equipped == 1) {
-                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id", first_passenger->passenger->id);
+                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id %d", first_passenger->passenger->id);
                 } else {
                     messageFirst.mvalue = 1;
 //                printf("Wątek %ld przetwarza pasażera %d o plci %s\n", thread_id, first_passenger->passenger->id,

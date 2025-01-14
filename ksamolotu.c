@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include "funkcje.h"
 #include <sys/shm.h>
+#include <fcntl.h>
 #define MAXAIRPLANES 10
 #define PREFIX "fifoplane"
 
@@ -9,36 +10,36 @@ int numberOfPlanes;
 int semID, msgID, shmID;
 int *memory;
 int N = 4;
+int *tableOfFlights;
 
+
+static void createFIFOs(int numberOfPlanes);
+static void readFromFifo(int numberOfPlanes);
 void *airplaneControl(void *arg) {
     int i = *(int *)arg;
     memory[i] = rand() % 100 + 1;
-
     printf("samolot %d z wagą %d\n", i, memory[i]);
+    while (1) {
+        struct passenger p;
+        ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
+        printf("------------------------------------------------------ samolot : %d", i);
+        print_passenger(&p);
+    }
     free(arg);
     return NULL;
 }
 
-void createFIFOs(int numberOfPlanes) {
-    char fifoName[20];
-    for (int i = 0; i < numberOfPlanes; i++) {
-        snprintf(fifoName, sizeof(fifoName), "%s%d",PREFIX, i); // Tworzymy unikalną nazwę FIFO
-        createNewFifo(fifoName);
-        printf("FIFO %s created successfully.\n", fifoName);
-    }
-}
-
 int main() {
     key_t kluczA, kluczB, kluczC;
-
     numberOfPlanes = randNumber(MAXAIRPLANES);
+    tableOfFlights = malloc(numberOfPlanes * sizeof(int));
 
     if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
     }
     semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
-    waitSemafor(semID, 2, 0); //brak jeżeli nie ma mainp
+    waitSemafor(semID, 0, 0); //brak jeżeli nie ma mainp
 
     if ((kluczC = ftok(".", 'D')) == -1) {
         printf("Blad ftok (D)\n");
@@ -51,10 +52,13 @@ int main() {
     }
     memory = (int*)shmat(shmID, NULL, 0);
     memory[MAXAIRPLANES] = numberOfPlanes;
+    createFIFOs(numberOfPlanes);
     printf("ilosc samolotow to salomoty %d\n", numberOfPlanes);
     signalSemafor(semID, 3);
+    signalSemafor(semID, 3);
 
-    createFIFOs(numberOfPlanes);
+
+    readFromFifo(numberOfPlanes);
 
     if (numberOfPlanes <= 0) {
         fprintf(stderr, "Invalid number of planes: %d\n", numberOfPlanes);
@@ -77,4 +81,27 @@ int main() {
     }
 
     return 0;
+}
+
+void createFIFOs(int numberOfPlanes){
+    char fifoName[20];
+    for (int i = 0; i < numberOfPlanes; i++) {
+        snprintf(fifoName, sizeof(fifoName), "%s%d",PREFIX, i); // Tworzymy unikalną nazwę FIFO
+        createNewFifo(fifoName);
+        printf("FIFO %s created successfully.\n", fifoName);
+    }
+}
+void readFromFifo(int numberOfPlanes){
+    char fifoName[20];
+    for (int i = 0; i < numberOfPlanes; i++) {
+        snprintf(fifoName, sizeof(fifoName), "%s%d",PREFIX, i); // Tworzymy unikalną nazwę FIFO
+        printf("daje do odczytu\n");
+        tableOfFlights[i] = open(fifoName, O_RDONLY);
+        printf("FIFO %d created successfully.\n", tableOfFlights[i]);
+        if (tableOfFlights[i] == -1) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+    }
+
 }

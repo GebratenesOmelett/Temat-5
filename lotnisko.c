@@ -1,9 +1,5 @@
 #include "funkcje.h"
-#include <fcntl.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
+
 
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
@@ -14,7 +10,6 @@ struct Node *node = NULL;
 int semID, msgID, shmID;
 int occupied;
 sem_t thread_ready[3];
-int Md;
 int fifoSend;
 int *memory;
 // Wskaźnik zajętości wątku
@@ -27,8 +22,6 @@ static void *securityControl(void *arg);
 int main() {
     key_t kluczA, kluczB, kluczC;
     pthread_t threads[3];
-    Md = randNumber(100);
-    printf("limit bagażu to %d\n", Md);
     if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
@@ -62,14 +55,16 @@ int main() {
         perror("Błąd przy otwieraniu FIFO do odczytu");
         return 1;
     }
-
+    printf("działą\n");
     // Inicjalizacja semaforów dla wątków
     for (int i = 0; i < 3; i++) {
+        int* thread_id = malloc(sizeof(int));
+        *thread_id = i;
         sem_init(&thread_ready[i], 0, 0);
-        pthread_create(&threads[i], NULL, securityControl, i);
+        pthread_create(&threads[i], NULL, securityControl, thread_id);
     }
     // Initialize the linked list head to NULL
-
+    printf("działą\n");
     while (1) {
 
         struct passenger p;
@@ -112,7 +107,7 @@ int main() {
 }
 void *securityControl(void *arg) {
     long thread_id = (long) arg;
-
+    free(arg);
     while (1) {
         sem_wait(&thread_ready[thread_id]); // Oczekiwanie na sygnał od głównego wątku
 
@@ -199,14 +194,14 @@ void *securityControl(void *arg) {
         thread_busy[thread_id] = 0;
         pthread_mutex_unlock(&list_mutex);
 
-        sleep(randNumber(10)); // Opcjonalny dodatkowy delay
+        sleep(randNumber(4)); // Opcjonalny dodatkowy delay
     }
 
     return NULL;
 }
 void adjustFrustrationOrder(struct Node* head) {
     struct Node* current = head;
-    struct Passenger* temp; // Tymczasowy wskaźnik na Passenger
+    struct passenger* temp; // Tymczasowy wskaźnik na Passenger
     while (current != NULL && current->next != NULL) {
         if (current->passenger->peoplePass < 3 && current->passenger->frustration < current->next->passenger->frustration) {
             current->passenger->peoplePass++;

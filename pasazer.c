@@ -1,12 +1,5 @@
-#include <stdio.h>
-#include <pthread.h>
-#include <unistd.h>
 #include "funkcje.h"
-#include <malloc.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
+
 
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
@@ -20,6 +13,7 @@ int semID, msgID, shmID, msgIDdyspozytor;
 int *memory;
 int numberOfPlanes;
 int *tableOfFlights;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void fifoSendAirplane(int numberOfPlanes);
 
@@ -44,8 +38,8 @@ int main() {
         exit(2);
     }
     msgctl(msgID, IPC_RMID, NULL);
-    msgID= msgget(kluczB, IPC_CREAT | 0666);
-    if(msgID == -1){
+    msgID = msgget(kluczB, IPC_CREAT | 0666);
+    if (msgID == -1) {
         printf("blad kolejki komunikatow pasazerow\n");
         exit(1);
     }
@@ -56,8 +50,8 @@ int main() {
         exit(2);
     }
     msgctl(msgIDdyspozytor, IPC_RMID, NULL);
-    msgIDdyspozytor= msgget(kluczD, IPC_CREAT | 0666);
-    if(msgIDdyspozytor == -1){
+    msgIDdyspozytor = msgget(kluczD, IPC_CREAT | 0666);
+    if (msgIDdyspozytor == -1) {
         printf("blad kolejki komunikatow pasazerow\n");
         exit(1);
     }
@@ -66,29 +60,29 @@ int main() {
         printf("Blad ftok (D)\n");
         exit(2);
     }
-    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT | 0666);
-    if(shmID == -1){
+    shmID = shmget(kluczC, (MAXAIRPLANES + 1) * sizeof(int), IPC_CREAT | 0666);
+    if (shmID == -1) {
         printf("blad pamieci dzielodznej pasazerow\n");
         exit(1);
     }
-    memory = (int*)shmat(shmID, NULL, 0);
-
+    memory = (int *) shmat(shmID, NULL, 0);
     signalSemafor(semID, 0);
     signalSemafor(semID, 0);
-    waitSemafor(semID, 3,0);
-
-    printf("ilosc samolotow %d\n",memory[MAXAIRPLANES]);
+    waitSemafor(semID, 3, 0);
+    printf("odblokowa pasazer\n");
+    printf("ilosc samolotow pasazer %d\n", memory[MAXAIRPLANES]);
     numberOfPlanes = memory[MAXAIRPLANES];
     tableOfFlights = malloc(numberOfPlanes * sizeof(int));
 
     fifoSendAirplane(numberOfPlanes);
+    printf("jest git-------------------------------------------");
 
     fifoSend = open(FIFO_NAME, O_WRONLY);
     if (fifoSend == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-
+    printf("jest git");
     int i = 0;
     while (1) {
         int *id = malloc(sizeof(int));
@@ -98,7 +92,7 @@ int main() {
             free(id);
             return 1;
         }
-        sleep(randNumber(2));
+        sleep(randNumber(1));
         i++;
     }
     for (int j = 0; j < liczba_watkow; j++) {
@@ -106,7 +100,8 @@ int main() {
     }
 
     close(fifoSend);
-    printf("Proces pasazer zakończył pracę.\n");
+    free(tableOfFlights);
+    pthread_mutex_destroy(&mutex);
     return 0;
 }
 
@@ -133,6 +128,7 @@ void *createAndSendPassenger(void *arg) {
             perror("write");
             exit(EXIT_FAILURE);
         }
+        pthread_mutex_lock(&mutex);
         if (msgrcv(msgID, &message, sizeof(message.mvalue), passenger->id, 0) == -1) {
             perror("msgrcv");
             exit(EXIT_FAILURE);
@@ -142,40 +138,48 @@ void *createAndSendPassenger(void *arg) {
         } else {
             passenger->baggage_weight = randNumber(passenger->baggage_weight);
         }
+        pthread_mutex_unlock(&mutex);
+
         sleep(randNumber(5));
     }
     printf("pasazer %d  czeka\n", passenger->id);
 
-    printf("table : %d",tableOfFlights[passenger->airplaneNumber]);
+    printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
 
-    if(passenger->is_vip == 0){
-        if (msgrcv(msgIDdyspozytor, &messageDepo, sizeof(int), passenger->airplaneNumber, 0) == -1) {
-            perror("msgrcv");
-            exit(EXIT_FAILURE);
-        }
-    }
+//    if(passenger->is_vip == 0){
+//        if (msgrcv(msgIDdyspozytor, &messageDepo, sizeof(int), passenger->airplaneNumber, 0) == -1) {
+//            perror("msgrcv");
+//            exit(EXIT_FAILURE);
+//        }
+//    }
+    pthread_mutex_lock(&mutex);
+    signalSemafor(semID, 2);
     if (write(tableOfFlights[passenger->airplaneNumber], passenger, sizeof(struct passenger)) == -1) {
         perror("write");
         exit(EXIT_FAILURE);
     }
+    pthread_mutex_unlock(&mutex);
     free(passenger);
     return NULL;
 }
 
-void fifoSendAirplane(int numberOfPlanes){
+void fifoSendAirplane(int numberOfPlanes) {
     char fifoName[20];
     for (int i = 0; i < numberOfPlanes; i++) {
-        snprintf(fifoName, sizeof(fifoName), "%s%d",PREFIX, i); // Tworzymy unikalną nazwę FIFO
-        printf("fifo do zapisu %s\n", fifoName);
-        printf("daje do zapisu\n");
+        snprintf(fifoName, sizeof(fifoName), "%s%d", PREFIX, i); // Tworzymy unikalną nazwę FIFO
+        printf("daje do zapisu         1\n");
+
 
         tableOfFlights[i] = open(fifoName, O_WRONLY);
-        if (tableOfFlights[i] == -1) {
-            perror("open : ");
-            exit(EXIT_FAILURE);
-        }
+        printf("zakończone           1\n");
+//        if (tableOfFlights[i] == -1) {
+//            perror("open : ");
+//            exit(EXIT_FAILURE);
+//        }
 
-        //        printf("FIFO %d created successfully.\n", tableOfFlights[i]);
+        printf("%d <------ nasze i\n",i);
+        printf("FIFO %d created successfully.\n", tableOfFlights[i]);
     }
+    printf("koncze ta funckje---------------------");
 }
 

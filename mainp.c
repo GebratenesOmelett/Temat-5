@@ -62,8 +62,8 @@ int main() {
     pid = fork();
     if (pid == 0) {
         // Proces potomny uruchamia program `pasazer`
-        execl("./lotnisko", "pasazer", NULL);
-        perror("Nie udało się uruchomić programu pasazer");
+        execl("./lotnisko", "lotnisko", NULL);
+        perror("Nie udało się uruchomić programu lotnisko");
         return 1;
     } else if (pid > 0) {
         // Proces rodzic czeka na zakończenie potomka

@@ -8,6 +8,14 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <time.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <malloc.h>
 
 int randNumber(int x) {
     srand(time(NULL));

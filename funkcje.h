@@ -9,11 +9,6 @@
 #include <errno.h>
 #include <time.h>
 #include <fcntl.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <stdio.h>
 #include <unistd.h>
 #include <malloc.h>
 
@@ -42,7 +37,7 @@ bool randRare(){
     else{
         return false;
     }
-};
+}
 
 void print_passenger(const struct passenger* p) {
     printf("Passenger Details:\n");
@@ -92,30 +87,6 @@ void append(struct Node** head, struct passenger data) {
     temp->next = newNode;
 }
 
-// Funkcja do usunięcia węzła z listy
-void deleteNode(struct Node** head, int key) {
-    struct Node* temp = *head;
-    struct Node* prev = NULL;
-
-    if (temp != NULL && temp->passenger->id == key) {
-        *head = temp->next;
-        free(temp);
-        return;
-    }
-
-    while (temp != NULL && temp->passenger->id != key) {
-        prev = temp;
-        temp = temp->next;
-    }
-
-    if (temp == NULL) {
-        printf("Element %d nie znaleziony w liście\n", key);
-        return;
-    }
-
-    prev->next = temp->next;
-    free(temp);
-}
 
 
 void printList(struct Node* head) {
@@ -168,7 +139,6 @@ void inicjalizujSemafor(int semID, int number, int val)
 
 int waitSemafor(int semID, int number, int flags)
 {
-    int result;
     struct sembuf operacje[1];
     operacje[0].sem_num = number;
     operacje[0].sem_op = -1;

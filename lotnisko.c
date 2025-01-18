@@ -1,5 +1,15 @@
 #include "funkcje.h"
-
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#include <malloc.h>
 
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
@@ -56,9 +66,11 @@ int main() {
         return 1;
     }
     printf("działą\n");
+    waitSemafor(semID, 2, 0);
+
     // Inicjalizacja semaforów dla wątków
-    for (int i = 0; i < 3; i++) {
-        int* thread_id = malloc(sizeof(int));
+    for (long i = 0; i < 3; i++) {
+        long* thread_id = malloc(sizeof(long));
         *thread_id = i;
         sem_init(&thread_ready[i], 0, 0);
         pthread_create(&threads[i], NULL, securityControl, thread_id);
@@ -66,11 +78,13 @@ int main() {
     // Initialize the linked list head to NULL
     printf("działą\n");
     while (1) {
-
         struct passenger p;
         ssize_t bytesRead = read(fifoSend, &p, sizeof(struct passenger));
 
-        pthread_mutex_lock(&list_mutex);
+        if (pthread_mutex_lock(&list_mutex) != 0) {
+            perror("Mutex lock failed");
+            exit(EXIT_FAILURE);
+        }
         append(&node, p);  // Append passenger to the list
         pthread_mutex_unlock(&list_mutex);
         printList(node);   // Print the updated list
@@ -88,8 +102,10 @@ int main() {
         } else {
             printf("Wszystkie wątki zajęte, dane oczekują w kolejce\n");
         }
-        pthread_mutex_lock(&list_mutex);
-//        printf("sortowanie po frustracji\n");
+        if (pthread_mutex_lock(&list_mutex) != 0) {
+            perror("Mutex lock failed");
+            exit(EXIT_FAILURE);
+        }
         adjustFrustrationOrder(node);
         addFrustration(node);
         pthread_mutex_unlock(&list_mutex);
@@ -106,12 +122,15 @@ int main() {
     return 0;
 }
 void *securityControl(void *arg) {
-    long thread_id = (long) arg;
+    long thread_id = *((long*) arg);
     free(arg);
     while (1) {
         sem_wait(&thread_ready[thread_id]); // Oczekiwanie na sygnał od głównego wątku
 
-        pthread_mutex_lock(&list_mutex);
+        if (pthread_mutex_lock(&list_mutex) != 0) {
+            perror("Mutex lock failed");
+            exit(EXIT_FAILURE);
+        }
 
         struct messagePassenger messageFirst;
         struct messagePassenger messageSecond;
@@ -190,7 +209,10 @@ void *securityControl(void *arg) {
         usleep(randNumber(1000)); // 100 ms
 
         // Ustawienie wątku jako gotowego
-        pthread_mutex_lock(&list_mutex);
+        if (pthread_mutex_lock(&list_mutex) != 0) {
+            perror("Mutex lock failed");
+            exit(EXIT_FAILURE);
+        }
         thread_busy[thread_id] = 0;
         pthread_mutex_unlock(&list_mutex);
 

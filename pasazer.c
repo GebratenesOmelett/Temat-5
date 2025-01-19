@@ -18,8 +18,8 @@ static void *createAndSendPassenger(void *arg);
 
 int fifoSend;
 int N = 4;
-int semID, msgID, shmID, msgIDdyspozytor, shmAmountofPeople, shmIOPassenger, shmPeopleInID;
-int *memory, *tableOfFlights, *memoryAmountPeople, *tableOfPeople, *IOPassenger, *memoryPeopleIn;
+int semID, msgID, shmID, shmAmountofPeople, shmIOPassenger, shmPeopleInID;
+int *memory, *tableOfFlights, *memoryAmountPeople, *IOPassenger, *memoryPeopleIn;
 int numberOfPlanes;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -54,16 +54,7 @@ int main() {
     }
 
 //-------------------------------------------------------------------------- kolejka wiadomości E
-    if ((kluczD = ftok(".", 'E')) == -1) {
-        printf("Blad ftok (E)\n");
-        exit(2);
-    }
-    msgctl(msgIDdyspozytor, IPC_RMID, NULL);
-    msgIDdyspozytor = msgget(kluczD, IPC_CREAT | 0666);
-    if (msgIDdyspozytor == -1) {
-        printf("blad kolejki komunikatow pasazerow\n");
-        exit(1);
-    }
+
 //-------------------------------------------------------------------------- pamięć dzielona D
     if ((kluczC = ftok(".", 'D')) == -1) {
         printf("Blad ftok (D)\n");
@@ -129,8 +120,9 @@ int main() {
     }
     //----------------------------------------------------
     signalSemafor(semID, 0);
-    signalSemafor(semID, 0);
     waitSemafor(semID, 3, 0);
+    signalSemafor(semID, 0);
+
 
     printf("ilosc samolotow pasazer %d\n", memory[MAXAIRPLANES]);
 
@@ -138,7 +130,7 @@ int main() {
 
     tableOfFlights = malloc(numberOfPlanes * sizeof(int));
 
-    signalSemafor(semID, 0);
+    signalSemafor(semID, 2);
     fifoSendAirplane(numberOfPlanes);
 
     fifoSend = open(FIFO_NAME, O_WRONLY);
@@ -147,9 +139,8 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-
     waitSemafor(semID, 2, 0);
-    printf("jest git-------------------------------------------");
+    printf("jest git------------------------------------------- pasazerow:");
 
     for (int i = 0; i < liczba_watkow; i++) {
         int *id = malloc(sizeof(int));
@@ -176,7 +167,7 @@ void *createAndSendPassenger(void *arg) {
     int id = *((int *) arg);
     struct passenger *passenger = (struct passenger *) malloc(sizeof(struct passenger));
     struct messagePassenger message;
-    free(arg);
+
 
     passenger->id = id;
     passenger->baggage_weight = randNumber(100);
@@ -186,44 +177,40 @@ void *createAndSendPassenger(void *arg) {
     passenger->frustration = randNumber(20);
     passenger->peoplePass = 0;
     passenger->airplaneNumber = getAirplane(numberOfPlanes);
+    free(arg);
     sleep(randNumber(3));
     while (1) {
-        pthread_mutex_lock(&mutex);
+
         if (write(fifoSend, passenger, sizeof(struct passenger)) == -1) {
             perror("write");
             exit(EXIT_FAILURE);
         }
-        pthread_mutex_unlock(&mutex);
+
         if (msgrcv(msgID, &message, sizeof(message.mvalue), passenger->id, 0) == -1) {
             perror("msgrcv");
             exit(EXIT_FAILURE);
         }
         if (message.mvalue == 1) {
-//            pthread_mutex_unlock(&mutex);
             break;
         } else {
             passenger->baggage_weight = randNumber(passenger->baggage_weight);
         }
-//        pthread_mutex_unlock(&mutex);
-        usleep(1000000000);
+        usleep(1000);
     }
     printf("pasazer %d  czeka\n", passenger->id);
 
-//    printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
+    printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
 
     while (1) {
-        for (int i = 0; i < numberOfPlanes; i++) {
-            printf("%d, ", tableOfPeople[i]);
-        }
+        //----------------------
+        //tu byl blad kurwaaaaaaaaaaaaa
+
         if(passenger->is_vip == 0){
-            usleep(10000);
+            printf("pasazer %d  czeka------------------------------------------\n", passenger->id);
             if (IOPassenger[passenger->airplaneNumber] == 0){
+                sleep(3);
                 continue;
             }
-        }
-        if (pthread_mutex_lock(&mutex) != 0) {
-            perror("Mutex lock failed");
-            exit(EXIT_FAILURE);
         }
         if (memoryPeopleIn[passenger->airplaneNumber] < memoryAmountPeople[passenger->airplaneNumber]) {
             memoryPeopleIn[passenger->airplaneNumber]++;
@@ -231,14 +218,12 @@ void *createAndSendPassenger(void *arg) {
                 perror("write");
                 exit(EXIT_FAILURE);
             }
-            pthread_mutex_unlock(&mutex);
             break;
         } else {
-            pthread_mutex_unlock(&mutex);
             printf("samolot odlatuje");
             continue;
         }
-        pthread_mutex_unlock(&mutex);
+
     }
     printf("zapisane----------------------------------------------------------\n");
     free(passenger);

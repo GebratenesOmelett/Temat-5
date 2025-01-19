@@ -7,7 +7,7 @@
 
 #define MAXAIRPLANES 10
 
-int semID, msgIDdyspozytor, shmID, shmAmountofPeople, shmIOPassenger;
+int semID, shmID, shmAmountofPeople, shmIOPassenger;
 int numberOfPlanes;
 int *memory, *memoryAmountPeople, *IOPassenger;
 int N = 4;
@@ -51,15 +51,6 @@ int main() {
 
 
     //---------------------------------------------------- Inicjalizacja kolejke wiadomości E
-    if ((kluczD = ftok(".", 'E')) == -1) {
-        printf("Blad ftok (E)\n");
-        exit(2);
-    }
-    msgIDdyspozytor = msgget(kluczD, IPC_CREAT | 0666);
-    if (msgIDdyspozytor == -1) {
-        printf("Blad kolejki komunikatow pasazerow\n");
-        exit(1);
-    }
 
     //---------------------------------------------------- Inicjalizacja pamięć dzieloną D
     if ((kluczC = ftok(".", 'D')) == -1) {

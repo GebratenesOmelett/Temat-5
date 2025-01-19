@@ -22,7 +22,6 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // Define the mutex
 
 
 static void createFIFOs(int numberOfPlanes);
-
 static void readFromFifo(int numberOfPlanes);
 
 void *airplaneControl(void *arg) {
@@ -32,31 +31,31 @@ void *airplaneControl(void *arg) {
     waitSemafor(semInAirplane, i, 0);
 
 
-//    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
+    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
 
-//    pthread_mutex_lock(&mutex); // Critical section start
-//    printf("table of flight : %d\n", tableOfFlights[i]);
+    pthread_mutex_lock(&mutex); // Critical section start
+    printf("table of flight : %d\n", tableOfFlights[i]);
     while (1) {
-//        struct passenger p;
+        struct passenger p;
 
-//        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
-//            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
-////            tableOfPeople[i]++;
-//            if (bytesRead == -1) {
-//                perror("Error reading from FIFO");
-//                exit(EXIT_FAILURE);
-//            }
-//
-//            printf("------------------------------------------------------ samolot : %d", i);
-//            print_passenger(&p);
-//        } else {
-//            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
-//            printf("samolot %d startuje", i);
-////            memoryPeopleIn[i] = 0;
-////            signalSemafor(semInAirplane, i);
-//            usleep(100000);
-//        }
-//        pthread_mutex_unlock(&mutex); // Critical section end
+        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
+            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
+            tableOfPeople[i]++;
+            if (bytesRead == -1) {
+                perror("Error reading from FIFO");
+                exit(EXIT_FAILURE);
+            }
+
+            printf("------------------------------------------------------ samolot : %d", i);
+            print_passenger(&p);
+        } else {
+            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
+            printf("samolot %d startuje", i);
+            memoryPeopleIn[i] = 0;
+            signalSemafor(semInAirplane, i);
+            usleep(100000);
+        }
+        pthread_mutex_unlock(&mutex); // Critical section end
 
     }
 
@@ -148,15 +147,15 @@ int main() {
         printf("%d, ", tableOfFlights[i]);
     }
     pthread_t watki[numberOfPlanes];
-//    for (int i = 0; i < numberOfPlanes; i++) {
-//        int *arg = malloc(sizeof(int));
-//        if (!arg) {
-//            perror("malloc");
-//            return 1;
-//        }
-//        *arg = (i);
-//        pthread_create(&watki[i], NULL, airplaneControl, arg);
-//    }
+    for (int i = 0; i < numberOfPlanes; i++) {
+        int *arg = malloc(sizeof(int));
+        if (!arg) {
+            perror("malloc");
+            return 1;
+        }
+        *arg = (i);
+        pthread_create(&watki[i], NULL, airplaneControl, arg);
+    }
     for (int j = 0; j < numberOfPlanes; j++) {
         printf("%d,", memoryPeopleIn[j]);
     }

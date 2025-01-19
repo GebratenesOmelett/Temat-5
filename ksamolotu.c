@@ -12,7 +12,7 @@
 #define MAXAIRPLANES 10
 #define PREFIX "fifoplane"
 
-int numberOfPlanes, maxWeight, maxPeople, multiplyAirplane;
+int numberOfPlanes, maxPeople, multiplyAirplane;
 int semID, msgID, shmID, shmAmountofPeople, shmPeopleInID, semInAirplane;
 int N = 4;
 int *tableOfFlights, *memoryAmountPeople, *memory, *tableOfPeople, *memoryPeopleIn;
@@ -26,37 +26,36 @@ static void createFIFOs(int numberOfPlanes);
 static void readFromFifo(int numberOfPlanes);
 
 void *airplaneControl(void *arg) {
-    int i = *(int *) arg;
+    int i = *((int *) arg);
     free(arg);
     printf("samolot %d o pojemności %d\n", i, memoryAmountPeople[i]);
     waitSemafor(semInAirplane, i, 0);
-    maxWeight = rand() % 100 + 1;
-    memory[i] = maxWeight;
-    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
 
+
+//    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
 
 //    pthread_mutex_lock(&mutex); // Critical section start
-
+//    printf("table of flight : %d\n", tableOfFlights[i]);
     while (1) {
-        struct passenger p;
+//        struct passenger p;
 
-        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
-            tableOfPeople[i]++;
-            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
-            if (bytesRead == -1) {
-                perror("Error reading from FIFO");
-                exit(EXIT_FAILURE);
-            }
-
-            printf("------------------------------------------------------ samolot : %d", i);
-            print_passenger(&p);
-        } else {
-            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
-            printf("samolot %d startuje", i);
-            memoryPeopleIn[i] = 0;
-            signalSemafor(semInAirplane, i);
-            usleep(100000);
-        }
+//        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
+//            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
+////            tableOfPeople[i]++;
+//            if (bytesRead == -1) {
+//                perror("Error reading from FIFO");
+//                exit(EXIT_FAILURE);
+//            }
+//
+//            printf("------------------------------------------------------ samolot : %d", i);
+//            print_passenger(&p);
+//        } else {
+//            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
+//            printf("samolot %d startuje", i);
+////            memoryPeopleIn[i] = 0;
+////            signalSemafor(semInAirplane, i);
+//            usleep(100000);
+//        }
 //        pthread_mutex_unlock(&mutex); // Critical section end
 
     }
@@ -83,8 +82,9 @@ int main() {
         exit(2);
     }
     semInAirplane = alokujSemafor(kluczM, MAXAIRPLANES, IPC_CREAT | 0666);
-    for (int i = 0; i < MAXAIRPLANES; i++)
+    for (int i = 0; i < MAXAIRPLANES; i++) {
         inicjalizujSemafor(semInAirplane, i, 0);
+    }
 //#------------------------------------------------ Alokacja pamięci dzielonej D
     if ((kluczC = ftok(".", 'D')) == -1) {
         printf("Blad ftok (D)\n");
@@ -99,7 +99,7 @@ int main() {
     memory[MAXAIRPLANES] = numberOfPlanes;
 //#------------------------------------------------ Alokacja pamięci dzielonej F
     if ((kluczF = ftok(".", 'F')) == -1) {
-        printf("Blad ftok (D)\n");
+        printf("Blad ftok (F)\n");
         exit(2);
     }
 
@@ -144,30 +144,31 @@ int main() {
     printf("odblokowa\n");
 
     readFromFifo(numberOfPlanes);
-    for (int i = 0; i < MAXAIRPLANES; i++) {
+    for (int i = 0; i < numberOfPlanes; i++) {
         printf("%d, ", tableOfFlights[i]);
     }
-    pthread_t watki[numberOfPlanes * multiplyAirplane];
-//    for (int i = 0; i < numberOfPlanes * multiplyAirplane; i++) {
+    pthread_t watki[numberOfPlanes];
+//    for (int i = 0; i < numberOfPlanes; i++) {
 //        int *arg = malloc(sizeof(int));
 //        if (!arg) {
 //            perror("malloc");
 //            return 1;
 //        }
-//        *arg = i % numberOfPlanes;
+//        *arg = (i);
 //        pthread_create(&watki[i], NULL, airplaneControl, arg);
 //    }
-    for (int j = 0; j < MAXAIRPLANES; j++) {
+    for (int j = 0; j < numberOfPlanes; j++) {
         printf("%d,", memoryPeopleIn[j]);
     }
     printf("\n");
-    for (int j = 0; j < MAXAIRPLANES; j++) {
-        printf("%d,", memoryAmountPeople[j]);
-    }
+
     for (int i = 0; i < numberOfPlanes; i++) {
-        maxPeople = rand() % 100 + 20;
-        memoryAmountPeople[i] = maxPeople;
+        memory[i] = rand() % 100 + 1;
+        memoryAmountPeople[i] = rand() % 100 + 20;
         signalSemafor(semInAirplane, i);
+    }
+    for (int j = 0; j < numberOfPlanes; j++) {
+        printf("%d,", memoryAmountPeople[j]);
     }
     signalSemafor(semID, 2);
     signalSemafor(semID, 2);

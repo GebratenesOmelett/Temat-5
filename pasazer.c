@@ -147,7 +147,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    printf("jest git-------------------------------------------");
 
     waitSemafor(semID, 2, 0);
     printf("jest git-------------------------------------------");
@@ -160,7 +159,7 @@ int main() {
             free(id);
             return 1;
         }
-        sleep(randNumber(1));
+        sleep(randNumber(2));
     }
     for (int j = 0; j < liczba_watkow; j++) {
         pthread_join(watki[j], NULL);
@@ -188,13 +187,13 @@ void *createAndSendPassenger(void *arg) {
     passenger->peoplePass = 0;
     passenger->airplaneNumber = getAirplane(numberOfPlanes);
     sleep(randNumber(3));
-
     while (1) {
+        pthread_mutex_lock(&mutex);
         if (write(fifoSend, passenger, sizeof(struct passenger)) == -1) {
             perror("write");
             exit(EXIT_FAILURE);
         }
-
+        pthread_mutex_unlock(&mutex);
         if (msgrcv(msgID, &message, sizeof(message.mvalue), passenger->id, 0) == -1) {
             perror("msgrcv");
             exit(EXIT_FAILURE);
@@ -206,15 +205,14 @@ void *createAndSendPassenger(void *arg) {
             passenger->baggage_weight = randNumber(passenger->baggage_weight);
         }
 //        pthread_mutex_unlock(&mutex);
-
-        sleep(100);
+        usleep(1000000000);
     }
     printf("pasazer %d  czeka\n", passenger->id);
 
 //    printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
 
     while (1) {
-        for (int i = 0; i < MAXAIRPLANES; i++) {
+        for (int i = 0; i < numberOfPlanes; i++) {
             printf("%d, ", tableOfPeople[i]);
         }
         if(passenger->is_vip == 0){

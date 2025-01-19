@@ -65,7 +65,7 @@ int main() {
         perror("Błąd przy otwieraniu FIFO do odczytu");
         return 1;
     }
-    printf("działą\n");
+    printf("działą fifoSend : %d\n", fifoSend);
     waitSemafor(semID, 2, 0);
 
     // Inicjalizacja semaforów dla wątków
@@ -80,7 +80,10 @@ int main() {
     while (1) {
         struct passenger p;
         ssize_t bytesRead = read(fifoSend, &p, sizeof(struct passenger));
-
+        if (bytesRead < sizeof (struct passenger)) {
+                perror("Error reading from FIFO");
+                exit(EXIT_FAILURE);
+            }
         if (pthread_mutex_lock(&list_mutex) != 0) {
             perror("Mutex lock failed");
             exit(EXIT_FAILURE);
@@ -109,6 +112,7 @@ int main() {
         adjustFrustrationOrder(node);
         addFrustration(node);
         pthread_mutex_unlock(&list_mutex);
+
     }
     for (int i = 0; i < 3; i++) {
         pthread_join(threads[i], NULL);
@@ -123,6 +127,7 @@ int main() {
 }
 void *securityControl(void *arg) {
     long thread_id = *((long*) arg);
+    printf("threadID %ld", thread_id);
     free(arg);
     while (1) {
         sem_wait(&thread_ready[thread_id]); // Oczekiwanie na sygnał od głównego wątku

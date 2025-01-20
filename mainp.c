@@ -1,84 +1,109 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include "funkcje.h"
 
-int N = 4;
-int main() {
-    key_t klucz;
+
+#define SG1 SIGUSR1
+#define SG2 SIGUSR2
+
+
+#define SEMAPHORE_COUNT 4
+
+// Tablica globalna PID-ów procesów potomnych
+pid_t pids[SEMAPHORE_COUNT];
+
+void handleSignalKill(int sig) {
+    for (int i = 0; i < SEMAPHORE_COUNT; i++) {
+        if (pids[i] > 0) {
+            printf("Wysyłanie sygnału SIGNALKILL do procesu PID: %d\n", pids[i]);
+            if(kill(pids[i], SIGUSR2) == -1){
+                perror("Nie udało się wysłać sygnału");
+            }
+        }
+    }
+}
+
+
+void initializeSignalHandling() {
+
+    struct sigaction saCtrlC;
+    saCtrlC.sa_handler = handleSignalKill;
+    saCtrlC.sa_flags = 0;
+    sigemptyset(&saCtrlC.sa_mask);
+
+    if (sigaction(SIGINT, &saCtrlC, NULL) == -1) {
+        perror("Błąd SIGINT");
+        _exit(1);
+    }
+}
+
+int createAndInitializeSemaphores(int semaphoreCount) {
+    key_t key;
     int semID;
 
-    if ( (klucz = ftok(".", 'A')) == -1 )
-    {
-        printf("Blad ftok (A)\n");
-        exit(2);
+    if ((key = ftok(".", 'A')) == -1) {
+        perror("Błąd ftok");
+        _exit(2);
     }
-    semID = alokujSemafor(klucz, N, IPC_CREAT | 0666);
-    for (int i = 0; i < N; i++)
-        inicjalizujSemafor(semID, i, 0); // inicjalizujemy zerami
+
+    semID = alokujSemafor(key, semaphoreCount, IPC_CREAT | 0666);
+    for (int i = 0; i < semaphoreCount; i++) {
+        inicjalizujSemafor(semID, i, 0);
+    }
 
     printf("Semafory gotowe!\n");
+    return semID;
+}
 
-//    createNewFifo();
-    int pid = fork();
-    if (pid == 0) {
-        // Proces potomny uruchamia program `pasazer`
-        execl("./pasazer", "pasazer", NULL);
-        perror("Nie udało się uruchomić programu pasazer");
-        return 1;
-    } else if (pid > 0) {
-        // Proces rodzic czeka na zakończenie potomka
+pid_t startProcess(const char *programName) {
+    pid_t pid = fork();
 
-    } else {
-        perror("fork");
-        return 1;
-    }
-    pid = fork();
     if (pid == 0) {
-        // Proces potomny uruchamia program `pasazer`
-        execl("./ksamolotu", "ksamolotu", NULL);
-        perror("Nie udało się uruchomić programu samolot");
-        return 1;
-    } else if (pid > 0) {
-        // Proces rodzic czeka na zakończenie potomka
+        execl(programName, programName, NULL);
+        perror("Nie udało się uruchomić programu");
+        _exit(1);
+    } else if (pid < 0) {
+        perror("Błąd podczas tworzenia procesu");
+        _exit(1);
+    }
 
-    } else {
-        perror("fork");
-        return 1;
-    }
-    pid = fork();
-    if (pid == 0) {
-        // Proces potomny uruchamia program `pasazer`
-        execl("./dyspozytor", "dyspozytor", NULL);
-        perror("Nie udało się uruchomić programu dyspozytor");
-        return 1;
-    } else if (pid > 0) {
-        // Proces rodzic czeka na zakończenie potomka
+    return pid;
+}
 
-    } else {
-        perror("fork");
-        return 1;
+int main() {
+    // Inicjalizacja obsługi sygnałów
+    initializeSignalHandling();
+
+    // Tworzenie i inicjalizacja semaforów
+    int semID = createAndInitializeSemaphores(SEMAPHORE_COUNT);
+
+    // Uruchamianie procesów potomnych
+    pids[0] = startProcess("./pasazer");
+    pids[1] = startProcess("./ksamolotu");
+    pids[2] = startProcess("./dyspozytor");
+    pids[3] = startProcess("./lotnisko");
+
+    // Wyświetlanie PID-ów procesów potomnych
+    printf("PID procesów: \n");
+    printf("Pasazer: %d\n", pids[0]);
+    printf("Ksamolotu: %d\n", pids[1]);
+    printf("Dyspozytor: %d\n", pids[2]);
+    printf("Lotnisko: %d\n", pids[3]);
+
+    // Podnoszenie semafora i oczekiwanie na zakończenie procesów
+    signalSemafor(semID, 1);
+
+    for (int i = 0; i < SEMAPHORE_COUNT; i++) {
+        wait(NULL);
     }
-    pid = fork();
-    if (pid == 0) {
-        // Proces potomny uruchamia program `pasazer`
-        execl("./lotnisko", "lotnisko", NULL);
-        perror("Nie udało się uruchomić programu lotnisko");
-        return 1;
-    } else if (pid > 0) {
-        // Proces rodzic czeka na zakończenie potomka
-        signalSemafor(semID, 1);
-        wait(NULL);
-        wait(NULL);
-        wait(NULL);
-        wait(NULL);
-        printf("Program lotnisko zakończył działanie.\n");
-        printf("Program pasazer zakończył działanie.\n");
-        printf("Program ksamolotu zakończył działanie.\n");
-        printf("Program dyzpozytor zakończył działanie.\n");
-    } else {
-        perror("fork");
-        return 1;
-    }
+
+    // Wyświetlenie komunikatów o zakończeniu procesów
+    printf("Program lotnisko zakończył działanie.\n");
+    printf("Program pasazer zakończył działanie.\n");
+    printf("Program ksamolotu zakończył działanie.\n");
+    printf("Program dyspozytor zakończył działanie.\n");
+
     return 0;
 }

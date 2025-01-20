@@ -13,22 +13,53 @@
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
 #define PREFIX "fifoplane"
+#define PASSENGERSAMOUNT 10000
+#define START 1
+#define STOP 0
+
+
+#define SG1 SIGUSR1
+#define SG2 SIGUSR2
+
 
 static void *createAndSendPassenger(void *arg);
+
+static void cleanupResources();
 
 int fifoSend;
 int N = 4;
 int semID, msgID, shmID, shmAmountofPeople, shmIOPassenger, shmPeopleInID;
 int *memory, *tableOfFlights, *memoryAmountPeople, *IOPassenger, *memoryPeopleIn;
-int numberOfPlanes;
+int numberOfPlanes, liczba_watkow, startStop;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void fifoSendAirplane(int numberOfPlanes);
 
-int main() {
-    key_t kluczA, kluczB, kluczC, kluczD, kluczF, kluczG, kluczL;
+void handleSignalKill(int sig) {
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    startStop = 0; // Ustawienie flagi zatrzymania
+    cleanupResources(); // Sprzątanie zasobów
+}
 
+
+int main() {
+    //############################## Obsługa sygnału
+    struct sigaction saKill;
+
+    saKill.sa_handler = handleSignalKill;
+    saKill.sa_flags = 0;
+    sigemptyset(&saKill.sa_mask);
+    if (sigaction(SIGUSR2, &saKill, NULL) == -1) {
+        perror("Błąd SIGNALKILL");
+        return 1;
+    }
+
+//###############################
+    key_t kluczA, kluczB, kluczC, kluczF, kluczG, kluczL;
+    liczba_watkow = PASSENGERSAMOUNT; // Liczba wątków do utworzenia
+    pthread_t watki[liczba_watkow];
+    startStop = START;
 //-------------------------------------------------------------------------- klucz semaforów A
     if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
@@ -37,8 +68,7 @@ int main() {
 
     semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
     waitSemafor(semID, 1, 0); //brak jeżeli nie ma mainp
-    int liczba_watkow = 10000; // Liczba wątków do utworzenia
-    pthread_t watki[liczba_watkow];
+
 
     createNewFifo(FIFO_NAME);
 //-------------------------------------------------------------------------- kolejka wiadomości C
@@ -97,8 +127,8 @@ int main() {
         printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
-    IOPassenger = (int *)shmat(shmIOPassenger, NULL, 0);
-    if (IOPassenger == (void *)-1) {
+    IOPassenger = (int *) shmat(shmIOPassenger, NULL, 0);
+    if (IOPassenger == (void *) -1) {
         perror("shmat");
         exit(1);
     }
@@ -113,8 +143,8 @@ int main() {
         printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
-    memoryPeopleIn = (int *)shmat(shmPeopleInID, NULL, 0);
-    if (memoryPeopleIn == (void *)-1) {
+    memoryPeopleIn = (int *) shmat(shmPeopleInID, NULL, 0);
+    if (memoryPeopleIn == (void *) -1) {
         perror("shmat");
         exit(1);
     }
@@ -143,6 +173,9 @@ int main() {
     printf("jest git------------------------------------------- pasazerow:");
 
     for (int i = 0; i < liczba_watkow; i++) {
+        if (!startStop) {
+            break;
+        }
         int *id = malloc(sizeof(int));
         *id = i + 1;
         if (pthread_create(&watki[i], NULL, createAndSendPassenger, id) != 0) {
@@ -156,6 +189,7 @@ int main() {
         pthread_join(watki[j], NULL);
     }
 
+    printf("kończe");
     close(fifoSend);
     free(tableOfFlights);
     pthread_mutex_destroy(&mutex);
@@ -192,6 +226,9 @@ void *createAndSendPassenger(void *arg) {
         }
         if (message.mvalue == 1) {
             break;
+        } else if (message.mvalue == 2) {
+            free(passenger);
+            return NULL;
         } else {
             passenger->baggage_weight = randNumber(passenger->baggage_weight);
         }
@@ -202,12 +239,10 @@ void *createAndSendPassenger(void *arg) {
     printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
 
     while (1) {
-        //----------------------
-        //tu byl blad kurwaaaaaaaaaaaaa
 
-        if(passenger->is_vip == 0){
+        if (passenger->is_vip == 0) {
             printf("pasazer %d  czeka------------------------------------------\n", passenger->id);
-            if (IOPassenger[passenger->airplaneNumber] == 0){
+            if (IOPassenger[passenger->airplaneNumber] == 0) {
                 sleep(3);
                 continue;
             }
@@ -247,4 +282,54 @@ void fifoSendAirplane(int numberOfPlanes) {
 
     return;
 }
+
+void cleanupResources() {
+    printf("czyszcze pasazera");
+    if (fifoSend != -1) {
+        close(fifoSend);
+    }
+
+    for (int i = 0; i < numberOfPlanes; i++) {
+        if (tableOfFlights[i] != -1) {
+            close(tableOfFlights[i]);
+        }
+    }
+
+    // Zwolnienie pamięci
+    if (tableOfFlights != NULL) {
+        free(tableOfFlights);
+    }
+
+    // Odłączenie pamięci dzielonej
+    if (memory != (void *) -1) {
+        shmdt(memory);
+    }
+    if (memoryAmountPeople != (void *) -1) {
+        shmdt(memoryAmountPeople);
+    }
+    if (IOPassenger != (void *) -1) {
+        shmdt(IOPassenger);
+    }
+    if (memoryPeopleIn != (void *) -1) {
+        shmdt(memoryPeopleIn);
+    }
+
+    // Usunięcie pamięci dzielonej
+    shmctl(shmID, IPC_RMID, NULL);
+    shmctl(shmAmountofPeople, IPC_RMID, NULL);
+    shmctl(shmIOPassenger, IPC_RMID, NULL);
+    shmctl(shmPeopleInID, IPC_RMID, NULL);
+
+    // Usunięcie kolejki wiadomości
+    msgctl(msgID, IPC_RMID, NULL);
+
+    // Usunięcie semaforów
+    zwolnijSemafor(semID, 0);
+
+    // Zniszczenie mutexa
+    pthread_mutex_destroy(&mutex);
+
+    printf("Zasoby programu zostały wyczyszczone.\n");
+}
+
 

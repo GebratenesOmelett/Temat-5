@@ -14,6 +14,8 @@
 #define FIFO_NAME "passengerFifo"
 #define MAXAIRPLANES 10
 
+#define SIGNALKILL SIGUSR2
+
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 int N = 4;
 struct Node *node = NULL;
@@ -22,22 +24,42 @@ int occupied;
 sem_t thread_ready[3];
 int fifoSend;
 int *memory;
+int assigned_thread;
 // Wskaźnik zajętości wątku
 int thread_busy[3] = {0, 0, 0};
+pthread_t threads[3];
 
-static void adjustFrustrationOrder(struct Node* head);
-static void addFrustration(struct Node* head);
+static void adjustFrustrationOrder(struct Node *head);
+static void addFrustration(struct Node *head);
 static void *securityControl(void *arg);
+static void cleanupResources();
+
+
+void handleSignalKill(int sig) {
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    cleanupResources(); // Sprzątanie zasobów
+}
 
 int main() {
+    //############################## Obsługa sygnału
+    struct sigaction saKill;
+
+    saKill.sa_handler = handleSignalKill;
+    saKill.sa_flags = 0;
+    sigemptyset(&saKill.sa_mask);
+    if(sigaction(SIGNALKILL, &saKill, NULL) == -1){
+        perror("Błąd SIGNALKILL");
+        return 1;
+    }
+
+//###############################
     key_t kluczA, kluczB, kluczC;
-    pthread_t threads[3];
     if ((kluczA = ftok(".", 'A')) == -1) {
         printf("Blad ftok (A)\n");
         exit(2);
     }
     semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
-    if(semID == -1){
+    if (semID == -1) {
         printf("blad semaforow\n");
         exit(1);
     }
@@ -45,8 +67,8 @@ int main() {
         printf("Blad ftok (C)\n");
         exit(2);
     }
-    msgID= msgget(kluczB, IPC_CREAT | 0666);
-    if(msgID == -1){
+    msgID = msgget(kluczB, IPC_CREAT | 0666);
+    if (msgID == -1) {
         printf("blad kolejki komunikatow lotnisko\n");
         exit(1);
     }
@@ -55,14 +77,14 @@ int main() {
         printf("Blad ftok (D)\n");
         exit(2);
     }
-    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT|0666);
-    if(shmID == -1){
+    shmID = shmget(kluczC, (MAXAIRPLANES + 1) * sizeof(int), IPC_CREAT | 0666);
+    if (shmID == -1) {
         printf("blad pamieci dzielodznej lotniska\n");
         exit(1);
     }
 
     waitSemafor(semID, 2, 0);
-    memory = (int*)shmat(shmID, NULL, 0);
+    memory = (int *) shmat(shmID, NULL, 0);
     fifoSend = open(FIFO_NAME, O_RDONLY);
     if (fifoSend == -1) {
         perror("Błąd przy otwieraniu FIFO do odczytu");
@@ -73,7 +95,7 @@ int main() {
 
     // Inicjalizacja semaforów dla wątków
     for (long i = 0; i < 3; i++) {
-        long* thread_id = malloc(sizeof(long));
+        long *thread_id = malloc(sizeof(long));
         *thread_id = i;
         sem_init(&thread_ready[i], 0, 0);
         pthread_create(&threads[i], NULL, securityControl, thread_id);
@@ -83,7 +105,7 @@ int main() {
     while (1) {
         struct passenger p;
         ssize_t bytesRead = read(fifoSend, &p, sizeof(struct passenger));
-        if (bytesRead < sizeof (struct passenger)) {
+        if (bytesRead < sizeof(struct passenger)) {
             perror("Error reading from FIFO");
             exit(EXIT_FAILURE);
         }
@@ -95,7 +117,7 @@ int main() {
         pthread_mutex_unlock(&list_mutex);
         printList(node);   // Print the updated list
 
-        int assigned_thread = -1;
+        assigned_thread = -1;
         // Check if any thread is free
         for (int i = 0; i < 3; i++) {
             if (thread_busy[i] == 0) {
@@ -136,7 +158,7 @@ int main() {
 }
 
 void *securityControl(void *arg) {
-    long thread_id = *((long*) arg);
+    long thread_id = *((long *) arg);
     free(arg);
     printf("Thread ID: %ld\n", thread_id);
     while (1) {
@@ -172,7 +194,9 @@ void *securityControl(void *arg) {
                 messageFirst.mvalue = 0;
             } else {
                 if (first_passenger->passenger->is_equipped == 1) {
-                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id %d\n", first_passenger->passenger->id);
+                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id %d\n",
+                           first_passenger->passenger->id);
+                    messageFirst.mvalue = 2;
                 } else {
                     messageFirst.mvalue = 1;
                 }
@@ -192,7 +216,13 @@ void *securityControl(void *arg) {
                 printf("Wątek %ld: Za duży bagaż u pasażera %d\n", thread_id, second_passenger->passenger->id);
                 messageSecond.mvalue = 0;
             } else {
-                messageSecond.mvalue = 1;
+                if (second_passenger->passenger->is_equipped == 1) {
+                    printf("Proba wniesienia przedmiotu niebezpiecznego, wyrzucenie pasazera o id %d\n",
+                           second_passenger->passenger->id);
+                    messageSecond.mvalue = 2;
+                } else {
+                    messageSecond.mvalue = 1;
+                }
             }
             if (msgsnd(msgID, &messageSecond, sizeof(messageSecond.mvalue), 0) == -1) {
                 perror("msgsnd");
@@ -217,11 +247,12 @@ void *securityControl(void *arg) {
     return NULL;
 }
 
-void adjustFrustrationOrder(struct Node* head) {
-    struct Node* current = head;
-    struct passenger* temp;
+void adjustFrustrationOrder(struct Node *head) {
+    struct Node *current = head;
+    struct passenger *temp;
     while (current != NULL && current->next != NULL) {
-        if (current->passenger->peoplePass < 3 && current->passenger->frustration < current->next->passenger->frustration) {
+        if (current->passenger->peoplePass < 3 &&
+            current->passenger->frustration < current->next->passenger->frustration) {
             current->passenger->peoplePass++;
             temp = current->passenger;
             current->passenger = current->next->passenger;
@@ -231,10 +262,82 @@ void adjustFrustrationOrder(struct Node* head) {
     }
 }
 
-void addFrustration(struct Node* head) {
-    struct Node* temp = head;
+void addFrustration(struct Node *head) {
+    struct Node *temp = head;
     while (temp != NULL) {
         temp->passenger->frustration += randNumber(10);
         temp = temp->next;
     }
 }
+
+void cleanupResources() {
+    printf("Czyszczenie zasobów...\n");
+
+    // Odłączenie pamięci dzielonej (jeśli jest zaalokowana)
+    if (memory != (void *) -1) {
+        if (shmdt(memory) == -1) {
+            perror("Błąd przy odłączaniu pamięci dzielonej");
+        }
+        memory = (int *) -1;
+    }
+
+    // Usunięcie pamięci dzielonej (jeśli jest zaalokowana)
+    if (shmID != -1) {
+        if (shmctl(shmID, IPC_RMID, NULL) == -1) {
+            perror("Błąd przy usuwaniu pamięci dzielonej (shmID)");
+        }
+        shmID = -1;
+    }
+
+    // Usunięcie semaforów (jeśli są zaalokowane)
+    if (semID != -1) {
+        if (semctl(semID, 0, IPC_RMID) == -1) {
+            perror("Błąd przy usuwaniu semaforów (semID)");
+        }
+        semID = -1;
+    }
+
+    // Zwalnianie semaforów wątków
+    for (int i = 0; i < 3; i++) {
+        if (sem_destroy(&thread_ready[i]) != 0) {
+            perror("Błąd przy niszczeniu semafora wątku");
+        }
+    }
+
+    // Zniszczenie mutexu (jeśli jest zaalokowany)
+    if (pthread_mutex_destroy(&list_mutex) != 0) {
+        perror("Błąd przy niszczeniu mutexu");
+    }
+
+    // Zamykanie i usuwanie FIFO
+    if (fifoSend != -1) {
+        close(fifoSend);
+        fifoSend = -1;
+    }
+    if (unlink(FIFO_NAME) == -1) {
+        perror("Błąd przy usuwaniu FIFO");
+    }
+
+    // Zakończenie wątków (jeśli są aktywne)
+    for (int i = 0; i < 3; i++) {
+        // Jeśli wątek jeszcze działa, można zastosować odpowiednią metodę zatrzymania
+        // np. poprzez odpowiedni mechanizm komunikacji z wątkami, aby zakończyć ich działanie.
+        // W tym przypadku zakładamy, że wątki zakończą się same po zakończeniu głównego procesu.
+        if (pthread_join(threads[i], NULL) != 0) {
+            perror("Błąd przy czekaniu na zakończenie wątku");
+        }
+    }
+
+    // Dodatkowe oczyszczanie pamięci listy pasażerów
+    struct Node *current = node;
+    while (current != NULL) {
+        struct Node *temp = current;
+        current = current->next;
+        free(temp->passenger);  // Zwalnianie pamięci pasażera
+        free(temp);             // Zwalnianie pamięci węzła listy
+    }
+
+    // Zakończenie programu
+    printf("Zasoby zostały wyczyszczone.\n");
+}
+

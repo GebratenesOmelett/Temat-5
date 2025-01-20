@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <signal.h>
 
 int randNumber(int x) {
     srand(time(NULL));

@@ -9,8 +9,12 @@
 #include <unistd.h>
 #include <malloc.h>
 
+
 #define MAXAIRPLANES 10
 #define PREFIX "fifoplane"
+
+#define SIGNALFLY SIGUSR1
+#define SIGNALKILL SIGUSR2
 
 int numberOfPlanes, maxPeople, multiplyAirplane;
 int semID, msgID, shmID, shmAmountofPeople, shmPeopleInID, semInAirplane;
@@ -23,6 +27,16 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // Define the mutex
 
 static void createFIFOs(int numberOfPlanes);
 static void readFromFifo(int numberOfPlanes);
+static void *airplaneControl(void *arg);
+static void cleanupResources();
+
+void handleSignalFly(int sig){
+    printf("Odebrano sygnał %d (SIGUSR1): Wykonuję akcję A.\n", sig);
+}
+void handleSignalKill(int sig) {
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    cleanupResources(); // Sprzątanie zasobów
+}
 
 void *airplaneControl(void *arg) {
     int i = *((int *) arg);
@@ -30,13 +44,12 @@ void *airplaneControl(void *arg) {
     printf("samolot %d o pojemności %d\n", i, memoryAmountPeople[i]);
     waitSemafor(semInAirplane, i, 0);
 
-
     printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
 
-    pthread_mutex_lock(&mutex); // Critical section start
     printf("table of flight : %d\n", tableOfFlights[i]);
     while (1) {
         struct passenger p;
+//        pthread_mutex_lock(&mutex); // Critical section start
 
         if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
             ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
@@ -54,8 +67,10 @@ void *airplaneControl(void *arg) {
             memoryPeopleIn[i] = 0;
             signalSemafor(semInAirplane, i);
             usleep(100000);
+            printf("samolot %d wrócił", i);
+
         }
-        pthread_mutex_unlock(&mutex); // Critical section end
+//        pthread_mutex_unlock(&mutex); // Critical section end
 
     }
 
@@ -64,6 +79,27 @@ void *airplaneControl(void *arg) {
 }
 
 int main() {
+//############################## Obsługa sygnału
+    struct sigaction saFly, saKill;
+
+    saFly.sa_handler = handleSignalFly;
+    saFly.sa_flags = 0;
+    sigemptyset(&saFly.sa_mask);
+    if(sigaction(SIGNALFLY, &saFly, NULL) == -1){
+        perror("Błąd SIGNALFLY");
+        return 1;
+    }
+
+    saKill.sa_handler = handleSignalKill;
+    saKill.sa_flags = 0;
+    sigemptyset(&saKill.sa_mask);
+    if(sigaction(SIGNALKILL, &saKill, NULL) == -1){
+        perror("Błąd SIGNALKILL");
+        return 1;
+    }
+
+//###############################
+
     key_t kluczA, kluczC, kluczF, kluczL, kluczM;
     numberOfPlanes = randNumber(MAXAIRPLANES);
     tableOfFlights = malloc(numberOfPlanes * sizeof(int));
@@ -210,3 +246,71 @@ void readFromFifo(int numberOfPlanes) {
         }
     }
 }
+void cleanupResources() {
+    printf("Czyszczenie zasobów...\n");
+
+    // Odłączenie pamięci dzielonej
+    if (memory != (void *) -1) {
+        shmdt(memory);
+    }
+    if (memoryAmountPeople != (void *) -1) {
+        shmdt(memoryAmountPeople);
+    }
+    if (memoryPeopleIn != (void *) -1) {
+        shmdt(memoryPeopleIn);
+    }
+
+    // Usunięcie pamięci dzielonej
+    if (shmID != -1) {
+        if (shmctl(shmID, IPC_RMID, NULL) == -1) {
+            perror("Błąd przy usuwaniu pamięci dzielonej (shmID)");
+        }
+    }
+    if (shmAmountofPeople != -1) {
+        if (shmctl(shmAmountofPeople, IPC_RMID, NULL) == -1) {
+            perror("Błąd przy usuwaniu pamięci dzielonej (shmAmountofPeople)");
+        }
+    }
+    if (shmPeopleInID != -1) {
+        if (shmctl(shmPeopleInID, IPC_RMID, NULL) == -1) {
+            perror("Błąd przy usuwaniu pamięci dzielonej (shmPeopleInID)");
+        }
+    }
+
+    // Usunięcie semaforów
+    if (semID != -1) {
+        if (semctl(semID, 0, IPC_RMID) == -1) {
+            perror("Błąd przy usuwaniu semaforów (semID)");
+        }
+    }
+    if (semInAirplane != -1) {
+        if (semctl(semInAirplane, 0, IPC_RMID) == -1) {
+            perror("Błąd przy usuwaniu semaforów (semInAirplane)");
+        }
+    }
+
+    // Zamykanie i usuwanie FIFO
+    if (tableOfFlights) {
+        char fifoName[20];
+        for (int i = 0; i < numberOfPlanes; i++) {
+            if (tableOfFlights[i] != -1) {
+                close(tableOfFlights[i]);
+            }
+            snprintf(fifoName, sizeof(fifoName), "%s%d", PREFIX, i);
+            if (unlink(fifoName) == -1) {
+                perror("Błąd przy usuwaniu FIFO");
+            } else {
+                printf("FIFO %s zostało usunięte.\n", fifoName);
+            }
+        }
+        free(tableOfFlights); // Zwolnienie pamięci
+    }
+
+    // Zniszczenie mutexu
+    if (pthread_mutex_destroy(&mutex) != 0) {
+        perror("Błąd przy niszczeniu mutexu");
+    }
+
+    printf("Zasoby zostały wyczyszczone.\n");
+}
+

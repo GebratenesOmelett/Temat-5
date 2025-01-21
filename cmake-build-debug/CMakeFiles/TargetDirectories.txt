@@ -1,0 +1,3 @@
+/home/pingu/projekt_lotnisko/Temat-5/cmake-build-debug/CMakeFiles/Temat_5.dir
+/home/pingu/projekt_lotnisko/Temat-5/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/pingu/projekt_lotnisko/Temat-5/cmake-build-debug/CMakeFiles/rebuild_cache.dir

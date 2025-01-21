@@ -4,17 +4,16 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
 
 #define MAXAIRPLANES 10
-
-
 #define SG1 SIGUSR1
 #define SG2 SIGUSR2
 
-
-int semID, shmID, shmAmountofPeople, shmIOPassenger;
+int semID = -1, shmID = -1, shmAmountofPeople = -1, shmIOPassenger = -1, shmPIDID = -1;
 int numberOfPlanes;
-int *memory, *memoryAmountPeople, *IOPassenger;
+int *memory = (void *)-1, *memoryAmountPeople = (void *)-1, *IOPassenger = (void *)-1, *memoryPID = (void *)-1;
 int N = 4;
 
 // Mutex
@@ -22,100 +21,103 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void cleanupResources();
 static void *controller(void *arg);
-// Funkcja wątku
 
 void handleSignalKill(int sig) {
     printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby dyspozytor.\n", sig);
     cleanupResources(); // Sprzątanie zasobów
-}
-void *sendFly(void *arg){
-//    printf("utworzone sygnał wylot %d\n", i);
-    while (1) {
-        usleep(rand() % 10000000 + 2000000);
-        printf("wymuszony wylot");
-
-    }
-    return NULL;
+    exit(0);
 }
 
 int main() {
-    //############################## Obsługa sygnału
-    struct sigaction saKill;
-
-    saKill.sa_handler = handleSignalKill;
-    saKill.sa_flags = 0;
-    sigemptyset(&saKill.sa_mask);
-    if(sigaction(SIGUSR2, &saKill, NULL) == -1){
-        perror("Błąd SIGNALKILL");
+    // Obsługa sygnału SIGINT
+    struct sigaction sa;
+    sa.sa_handler = handleSignalKill;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("[dyspozytor] Błąd ustawiania obsługi sygnału");
         return 1;
     }
 
-//###############################
-    key_t kluczA, kluczC, kluczF, kluczG;
+    printf("[dyspozytor] PID: %d - Czekam na SIGUSR2...\n", getpid());
 
-    //---------------------------------------------------- Inicjalizacja klucza A
+    key_t kluczA, kluczC, kluczF, kluczG, kluczT;
+
+    // Inicjalizacja semafora
     if ((kluczA = ftok(".", 'A')) == -1) {
-        printf("Blad ftok (A)\n");
+        perror("Blad ftok (A)");
         exit(2);
     }
-
     semID = alokujSemafor(kluczA, N, IPC_CREAT | 0666);
 
-
-    //---------------------------------------------------- Inicjalizacja kolejke wiadomości E
-
-    //---------------------------------------------------- Inicjalizacja pamięć dzieloną D
+    // Inicjalizacja pamięci dzielonej D
     if ((kluczC = ftok(".", 'D')) == -1) {
-        printf("Blad ftok (D)\n");
+        perror("Blad ftok (D)");
         exit(2);
     }
-
-    shmID = shmget(kluczC, (MAXAIRPLANES+1) * sizeof(int), IPC_CREAT | 0666);
+    shmID = shmget(kluczC, (MAXAIRPLANES + 1) * sizeof(int), IPC_CREAT | 0666);
     if (shmID == -1) {
-        printf("Blad pamieci dzielonej pasazerow\n");
+        perror("Blad przy tworzeniu pamieci dzielonej (D)");
         exit(1);
     }
     memory = (int *)shmat(shmID, NULL, 0);
     if (memory == (void *)-1) {
-        perror("shmat");
+        perror("Blad przy podlaczaniu pamieci dzielonej (D)");
         exit(1);
     }
-    //---------------------------------------------------- Inicjalizacja pamięć dzieloną F
+
+    // Inicjalizacja pamięci dzielonej F
     if ((kluczF = ftok(".", 'F')) == -1) {
-        printf("Blad ftok (F)\n");
+        perror("Blad ftok (F)");
         exit(2);
     }
-
-    shmAmountofPeople = shmget(kluczF, (MAXAIRPLANES) * sizeof(int), IPC_CREAT | 0666);
+    shmAmountofPeople = shmget(kluczF, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0666);
     if (shmAmountofPeople == -1) {
-        printf("Blad pamieci dzielonej pasazerow\n");
+        perror("Blad przy tworzeniu pamieci dzielonej (F)");
         exit(1);
     }
     memoryAmountPeople = (int *)shmat(shmAmountofPeople, NULL, 0);
     if (memoryAmountPeople == (void *)-1) {
-        perror("shmat");
+        perror("Blad przy podlaczaniu pamieci dzielonej (F)");
         exit(1);
     }
-    //---------------------------------------------------- Inicjalizacja pamięć dzieloną G
+
+    // Inicjalizacja pamięci dzielonej G
     if ((kluczG = ftok(".", 'G')) == -1) {
-        printf("Blad ftok (G)\n");
+        perror("Blad ftok (G)");
         exit(2);
     }
-
-    shmIOPassenger = shmget(kluczG, (MAXAIRPLANES) * sizeof(int), IPC_CREAT | 0666);
+    shmIOPassenger = shmget(kluczG, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0666);
     if (shmIOPassenger == -1) {
-        printf("Blad pamieci dzielonej pasazerow\n");
+        perror("Blad przy tworzeniu pamieci dzielonej (G)");
         exit(1);
     }
     IOPassenger = (int *)shmat(shmIOPassenger, NULL, 0);
     if (IOPassenger == (void *)-1) {
-        perror("shmat");
+        perror("Blad przy podlaczaniu pamieci dzielonej (G)");
         exit(1);
     }
-    //----------------------------------------------------
+
+    // Inicjalizacja pamięci dzielonej T
+    if ((kluczT = ftok(".", 'T')) == -1) {
+        perror("Blad ftok (T)");
+        exit(2);
+    }
+    shmPIDID = shmget(kluczT, sizeof(int), IPC_CREAT | 0666);
+    if (shmPIDID == -1) {
+        perror("Blad przy tworzeniu pamieci dzielonej (T)");
+        exit(1);
+    }
+    memoryPID = (int *)shmat(shmPIDID, NULL, 0);
+    if (memoryPID == (void *)-1) {
+        perror("Blad przy podlaczaniu pamieci dzielonej (T)");
+        exit(1);
+    }
+
     waitSemafor(semID, 3, 0);
     waitSemafor(semID, 0, 0);
-    printf("Ilosc samolotow dyspozytor %d\n", memory[MAXAIRPLANES]);
+
+    printf("Ilosc samolotow dyspozytor: %d\n", memory[MAXAIRPLANES]);
     numberOfPlanes = memory[MAXAIRPLANES];
 
     pthread_t watki[numberOfPlanes];
@@ -125,40 +127,51 @@ int main() {
         int *arg = malloc(sizeof(int));
         if (!arg) {
             perror("malloc");
+            cleanupResources();
             return 1;
         }
         *arg = i;
-        pthread_create(&watki[i], NULL, controller, arg);
+        if (pthread_create(&watki[i], NULL, controller, arg) != 0) {
+            perror("Błąd przy tworzeniu wątku");
+            free(arg);
+            cleanupResources();
+            return 1;
+        }
     }
 
-    // Czekanie na zakończenie wątków
+    // Oczekiwanie na zakończenie wątków
     for (int j = 0; j < numberOfPlanes; j++) {
         pthread_join(watki[j], NULL);
     }
 
-//     Zniszczenie mutexu przed zakończeniem programu
+    // Zniszczenie mutexu przed zakończeniem programu
     pthread_mutex_destroy(&mutex);
 
+    cleanupResources();
     return 0;
 }
 
 void *controller(void *arg) {
     int i = *(int *)arg;
-    printf("utworzone wątek controller %d\n", i);
-    free(arg); // Pamięć już niepotrzebna
+    printf("Utworzono wątek controller %d\n", i);
+    free(arg);
 
     while (1) {
         usleep(rand() % 10000000 + 2000000);
-        printf("zmieniam %d na otwarte-------------------", i);
+        printf("Zmieniam %d na otwarte-------------------\n", i);
 
         pthread_mutex_lock(&mutex);
 
         IOPassenger[i] = 1;
         usleep(10000000);
         IOPassenger[i] = 0;
-        pthread_mutex_unlock(&mutex);
-        printf("zmieniam %d na zamykanie-------------------", i);
 
+        pthread_mutex_unlock(&mutex);
+        printf("Zmieniam %d na zamknięte-------------------\n", i);
+
+        if ((rand() % 100 + 1) == 1) {
+            kill(memoryPID[0], SIGUSR1);
+        }
     }
     return NULL;
 }
@@ -166,53 +179,43 @@ void *controller(void *arg) {
 void cleanupResources() {
     printf("Czyszczenie zasobów...\n");
 
-    // Odłączenie pamięci dzielonej, jeśli została przydzielona
-    if (memory != (void *)-1) {
-        if (shmdt(memory) == -1) {
-            perror("Błąd przy odłączaniu pamięci dzielonej (memory)");
-        }
+    // Odłączenie pamięci dzielonej
+    if (memory != (void *)-1 && shmdt(memory) == -1) {
+        perror("Blad przy odłączaniu pamieci dzielonej (memory)");
     }
-    if (memoryAmountPeople != (void *)-1) {
-        if (shmdt(memoryAmountPeople) == -1) {
-            perror("Błąd przy odłączaniu pamięci dzielonej (memoryAmountPeople)");
-        }
+    if (memoryAmountPeople != (void *)-1 && shmdt(memoryAmountPeople) == -1) {
+        perror("Blad przy odłączaniu pamieci dzielonej (memoryAmountPeople)");
     }
-    if (IOPassenger != (void *)-1) {
-        if (shmdt(IOPassenger) == -1) {
-            perror("Błąd przy odłączaniu pamięci dzielonej (IOPassenger)");
-        }
+    if (IOPassenger != (void *)-1 && shmdt(IOPassenger) == -1) {
+        perror("Blad przy odłączaniu pamieci dzielonej (IOPassenger)");
+    }
+    if (memoryPID != (void *)-1 && shmdt(memoryPID) == -1) {
+        perror("Blad przy odłączaniu pamieci dzielonej (memoryPID)");
     }
 
-    // Usunięcie pamięci dzielonej, jeśli została przydzielona
-    if (shmID != -1) {
-        if (shmctl(shmID, IPC_RMID, NULL) == -1) {
-            perror("Błąd przy usuwaniu pamięci dzielonej (shmID)");
-        }
+    // Usuwanie pamięci dzielonej
+    if (shmID != -1 && shmctl(shmID, IPC_RMID, NULL) == -1) {
+        perror("Blad przy usuwaniu pamieci dzielonej (shmID)");
     }
-    if (shmAmountofPeople != -1) {
-        if (shmctl(shmAmountofPeople, IPC_RMID, NULL) == -1) {
-            perror("Błąd przy usuwaniu pamięci dzielonej (shmAmountofPeople)");
-        }
+    if (shmAmountofPeople != -1 && shmctl(shmAmountofPeople, IPC_RMID, NULL) == -1) {
+        perror("Blad przy usuwaniu pamieci dzielonej (shmAmountofPeople)");
     }
-    if (shmIOPassenger != -1) {
-        if (shmctl(shmIOPassenger, IPC_RMID, NULL) == -1) {
-            perror("Błąd przy usuwaniu pamięci dzielonej (shmIOPassenger)");
-        }
+    if (shmIOPassenger != -1 && shmctl(shmIOPassenger, IPC_RMID, NULL) == -1) {
+        perror("Blad przy usuwaniu pamieci dzielonej (shmIOPassenger)");
+    }
+    if (shmPIDID != -1 && shmctl(shmPIDID, IPC_RMID, NULL) == -1) {
+        perror("Blad przy usuwaniu pamieci dzielonej (shmPIDID)");
     }
 
-    // Usunięcie semaforów, jeśli zostały przydzielone
-    if (semID != -1) {
-        if (semctl(semID, 0, IPC_RMID) == -1) {
-            perror("Błąd przy usuwaniu semaforów");
-        }
+    // Usuwanie semaforów
+    if (semID != -1 && semctl(semID, 0, IPC_RMID) == -1) {
+        perror("Blad przy usuwaniu semaforów");
     }
 
-    // Zniszczenie mutexu, jeśli został zainicjalizowany
+    // Zniszczenie mutexu
     if (pthread_mutex_destroy(&mutex) != 0) {
-        perror("Błąd przy niszczeniu mutexu");
+        perror("Blad przy niszczeniu mutexu");
     }
 
     printf("Zasoby zostały wyczyszczone.\n");
 }
-
-

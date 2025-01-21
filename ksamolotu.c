@@ -14,68 +14,34 @@
 #define PREFIX "fifoplane"
 
 #define SIGNALFLY SIGUSR1
-#define SIGNALKILL SIGUSR2
 
 int numberOfPlanes, maxPeople, multiplyAirplane;
-int semID, msgID, shmID, shmAmountofPeople, shmPeopleInID, semInAirplane;
+int semID, msgID, shmID, shmAmountofPeople, shmPeopleInID, semInAirplane, shmPIDID;
 int N = 4;
-int *tableOfFlights, *memoryAmountPeople, *memory, *tableOfPeople, *memoryPeopleIn;
+int *tableOfFlights, *memoryAmountPeople, *memory, *tableOfPeople, *memoryPeopleIn, *memoryPID;
+int tabOfPass[MAXAIRPLANES], plane;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // Define the mutex
 // Mutex do synchronizacji zapisu
 
 
-static void createFIFOs(int numberOfPlanes);
-static void readFromFifo(int numberOfPlanes);
+static void createFIFOs();
+
+static void readFromFifo();
+
 static void *airplaneControl(void *arg);
+
 static void cleanupResources();
 
-void handleSignalFly(int sig){
+void handleSignalFly(int sig) {
     printf("Odebrano sygnał %d (SIGUSR1): Wykonuję akcję A.\n", sig);
+    plane = rand() % MAXAIRPLANES;
+    tabOfPass[plane] = 1;
 }
+
 void handleSignalKill(int sig) {
-    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby ksamolotu.\n", sig);
     cleanupResources(); // Sprzątanie zasobów
-}
-
-void *airplaneControl(void *arg) {
-    int i = *((int *) arg);
-    free(arg);
-    printf("samolot %d o pojemności %d\n", i, memoryAmountPeople[i]);
-    waitSemafor(semInAirplane, i, 0);
-
-    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
-
-    printf("table of flight : %d\n", tableOfFlights[i]);
-    while (1) {
-        struct passenger p;
-//        pthread_mutex_lock(&mutex); // Critical section start
-
-        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1) {
-            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
-            tableOfPeople[i]++;
-            if (bytesRead == -1) {
-                perror("Error reading from FIFO");
-                exit(EXIT_FAILURE);
-            }
-
-            printf("------------------------------------------------------ samolot : %d", i);
-            print_passenger(&p);
-        } else {
-            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
-            printf("samolot %d startuje", i);
-            memoryPeopleIn[i] = 0;
-            signalSemafor(semInAirplane, i);
-            usleep(100000);
-            printf("samolot %d wrócił", i);
-
-        }
-//        pthread_mutex_unlock(&mutex); // Critical section end
-
-    }
-
-
-    return NULL;
 }
 
 int main() {
@@ -85,7 +51,7 @@ int main() {
     saFly.sa_handler = handleSignalFly;
     saFly.sa_flags = 0;
     sigemptyset(&saFly.sa_mask);
-    if(sigaction(SIGNALFLY, &saFly, NULL) == -1){
+    if (sigaction(SIGNALFLY, &saFly, NULL) == -1) {
         perror("Błąd SIGNALFLY");
         return 1;
     }
@@ -93,14 +59,14 @@ int main() {
     saKill.sa_handler = handleSignalKill;
     saKill.sa_flags = 0;
     sigemptyset(&saKill.sa_mask);
-    if(sigaction(SIGNALKILL, &saKill, NULL) == -1){
-        perror("Błąd SIGNALKILL");
+    if (sigaction(SIGINT, &saKill, NULL) == -1) {
+        perror("[dyspozytor] Error setting signal handler");
         return 1;
     }
 
 //###############################
 
-    key_t kluczA, kluczC, kluczF, kluczL, kluczM;
+    key_t kluczA, kluczC, kluczF, kluczL, kluczM, kluczT;
     numberOfPlanes = randNumber(MAXAIRPLANES);
     tableOfFlights = malloc(numberOfPlanes * sizeof(int));
     multiplyAirplane = randNumber(5);
@@ -164,9 +130,24 @@ int main() {
         perror("shmat");
         exit(1);
     }
-//#--------------------------------------------------------
+//#--------------------------------------------------------Inicjalizacja pamięć dzieloną T
+    if ((kluczT = ftok(".", 'T')) == -1) {
+        printf("Blad ftok (T)\n");
+        exit(2);
+    }
 
-    createFIFOs(numberOfPlanes);
+    shmPIDID = shmget(kluczT, sizeof(int), IPC_CREAT | 0666);
+    if (shmPIDID == -1) {
+        printf("Blad pamieci dzielonej pasazerow\n");
+        exit(1);
+    }
+    memoryPID = (int *) shmat(shmPIDID, NULL, 0);
+    if (memoryPID == (void *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+    memoryPID[0] = getpid();
+    createFIFOs();
     tableOfPeople = malloc(MAXAIRPLANES * sizeof(int));
     if (numberOfPlanes <= 0) {
         fprintf(stderr, "Invalid number of planes: %d\n", numberOfPlanes);
@@ -178,7 +159,7 @@ int main() {
     signalSemafor(semID, 3);
     printf("odblokowa\n");
 
-    readFromFifo(numberOfPlanes);
+    readFromFifo();
     for (int i = 0; i < numberOfPlanes; i++) {
         printf("%d, ", tableOfFlights[i]);
     }
@@ -208,7 +189,7 @@ int main() {
     signalSemafor(semID, 2);
     signalSemafor(semID, 2);
 
-    for (int j = 0; j < numberOfPlanes * multiplyAirplane; j++) {
+    for (int j = 0; j < numberOfPlanes; j++) {
         if (pthread_join(watki[j], NULL) != 0) {
             perror("pthread_join");
         }
@@ -224,7 +205,7 @@ int main() {
     return 0;
 }
 
-void createFIFOs(int numberOfPlanes) {
+void createFIFOs() {
     char fifoName[20];
     for (int i = 0; i < numberOfPlanes; i++) {
         snprintf(fifoName, sizeof(fifoName), "%s%d", PREFIX, i); // Tworzymy unikalną nazwę FIFO
@@ -233,7 +214,7 @@ void createFIFOs(int numberOfPlanes) {
     }
 }
 
-void readFromFifo(int numberOfPlanes) {
+void readFromFifo() {
     char fifoName[20];
     for (int i = 0; i < numberOfPlanes; i++) {
         snprintf(fifoName, sizeof(fifoName), "%s%d", PREFIX, i); // Tworzymy unikalną nazwę FIFO
@@ -246,6 +227,7 @@ void readFromFifo(int numberOfPlanes) {
         }
     }
 }
+
 void cleanupResources() {
     printf("Czyszczenie zasobów...\n");
 
@@ -312,5 +294,49 @@ void cleanupResources() {
     }
 
     printf("Zasoby zostały wyczyszczone.\n");
+}
+
+void *airplaneControl(void *arg) {
+    int i = *((int *) arg);
+    free(arg);
+
+    waitSemafor(semInAirplane, i, 0);
+
+    printf("samolot %d z wagą %d o pojemności %d\n", i, memory[i], memoryAmountPeople[i]);
+
+    printf("table of flight : %d\n", tableOfFlights[i]);
+    while (1) {
+        struct passenger p;
+        pthread_mutex_lock(&mutex); // Critical section start
+
+        if (memoryPeopleIn[i] < memoryAmountPeople[i] || (rand() % 100 + 1) == 1 || tabOfPass[i] == 1) {
+            if (tabOfPass[i] == 1) {
+                tabOfPass[i] = 0;
+                printf("szybsze wylecenie samolotu %d", i);
+            }
+            ssize_t bytesRead = read(tableOfFlights[i], &p, sizeof(struct passenger));
+            if (bytesRead == -1) {
+                perror("Error reading from FIFO");
+                exit(EXIT_FAILURE);
+            }
+            printf("------------------------------------------------------ samolot : %d", i);
+            print_passenger(&p);
+            pthread_mutex_unlock(&mutex);
+        } else {
+            printf("samolot %d jest pełny osoby %d\n", i, memoryPeopleIn[i]);
+            printf("samolot %d startuje", i);
+            memoryPeopleIn[i] = 0;
+            signalSemafor(semInAirplane, i);
+            pthread_mutex_unlock(&mutex);
+            usleep(100000);
+            printf("samolot %d wrócił", i);
+
+        }
+        //        pthread_mutex_unlock(&mutex); // Critical section end
+
+    }
+
+
+    return NULL;
 }
 

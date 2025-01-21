@@ -3,11 +3,11 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include "funkcje.h"
-
+#include <sys/ipc.h>
+#include <sys/sem.h>
 
 #define SG1 SIGUSR1
 #define SG2 SIGUSR2
-
 
 #define SEMAPHORE_COUNT 4
 
@@ -18,16 +18,14 @@ void handleSignalKill(int sig) {
     for (int i = 0; i < SEMAPHORE_COUNT; i++) {
         if (pids[i] > 0) {
             printf("Wysyłanie sygnału SIGNALKILL do procesu PID: %d\n", pids[i]);
-            if(kill(pids[i], SIGUSR2) == -1){
+            if (kill(pids[i], SIGUSR2) == -1) {
                 perror("Nie udało się wysłać sygnału");
             }
         }
     }
 }
 
-
 void initializeSignalHandling() {
-
     struct sigaction saCtrlC;
     saCtrlC.sa_handler = handleSignalKill;
     saCtrlC.sa_flags = 0;
@@ -72,6 +70,16 @@ pid_t startProcess(const char *programName) {
     return pid;
 }
 
+void clean(int semID) {
+    // Usuwanie semaforów
+    if (zwolnijSemafor(semID,0) == -1) {
+        perror("Nie udało się usunąć semaforów");
+    } else {
+        printf("Semafory usunięte pomyślnie.\n");
+    }
+
+}
+
 int main() {
     // Inicjalizacja obsługi sygnałów
     initializeSignalHandling();
@@ -98,6 +106,9 @@ int main() {
     for (int i = 0; i < SEMAPHORE_COUNT; i++) {
         wait(NULL);
     }
+
+    // Wywołanie clean przed zakończeniem programu
+    clean(semID);
 
     // Wyświetlenie komunikatów o zakończeniu procesów
     printf("Program lotnisko zakończył działanie.\n");

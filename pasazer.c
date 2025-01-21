@@ -31,13 +31,13 @@ int N = 4;
 int semID, msgID, shmID, shmAmountofPeople, shmIOPassenger, shmPeopleInID;
 int *memory, *tableOfFlights, *memoryAmountPeople, *IOPassenger, *memoryPeopleIn;
 int numberOfPlanes, liczba_watkow, startStop;
-
+pthread_t watki[PASSENGERSAMOUNT];
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void fifoSendAirplane(int numberOfPlanes);
 
 void handleSignalKill(int sig) {
-    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby pasazer.\n", sig);
     startStop = 0; // Ustawienie flagi zatrzymania
     cleanupResources(); // Sprzątanie zasobów
 }
@@ -45,20 +45,21 @@ void handleSignalKill(int sig) {
 
 int main() {
     //############################## Obsługa sygnału
-    struct sigaction saKill;
-
-    saKill.sa_handler = handleSignalKill;
-    saKill.sa_flags = 0;
-    sigemptyset(&saKill.sa_mask);
-    if (sigaction(SIGUSR2, &saKill, NULL) == -1) {
-        perror("Błąd SIGNALKILL");
+    struct sigaction sa;
+    sa.sa_handler = handleSignalKill;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("[pasazer] Error setting signal handler");
         return 1;
     }
+
+    printf("[pasazer] PID: %d - Waiting for SIGUSR2...\n", getpid());
 
 //###############################
     key_t kluczA, kluczB, kluczC, kluczF, kluczG, kluczL;
     liczba_watkow = PASSENGERSAMOUNT; // Liczba wątków do utworzenia
-    pthread_t watki[liczba_watkow];
+
     startStop = START;
 //-------------------------------------------------------------------------- klucz semaforów A
     if ((kluczA = ftok(".", 'A')) == -1) {
@@ -239,7 +240,6 @@ void *createAndSendPassenger(void *arg) {
     printf("table : %d", tableOfFlights[passenger->airplaneNumber]);
 
     while (1) {
-
         if (passenger->is_vip == 0) {
             printf("pasazer %d  czeka------------------------------------------\n", passenger->id);
             if (IOPassenger[passenger->airplaneNumber] == 0) {
@@ -258,6 +258,7 @@ void *createAndSendPassenger(void *arg) {
             printf("samolot odlatuje");
             continue;
         }
+
 
     }
     printf("zapisane----------------------------------------------------------\n");

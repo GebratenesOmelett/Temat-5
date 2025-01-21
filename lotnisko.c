@@ -20,12 +20,9 @@ pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 int N = 4;
 struct Node *node = NULL;
 int semID, msgID, shmID;
-int occupied;
 sem_t thread_ready[3];
-int fifoSend;
+int fifoSend, assigned_thread, occupied;
 int *memory;
-int assigned_thread;
-// Wskaźnik zajętości wątku
 int thread_busy[3] = {0, 0, 0};
 pthread_t threads[3];
 
@@ -36,9 +33,10 @@ static void cleanupResources();
 
 
 void handleSignalKill(int sig) {
-    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby.\n", sig);
+    printf("Odebrano sygnał %d (SIGUSR2): Zatrzymuję program i czyszczę zasoby lotnisko.\n", sig);
     cleanupResources(); // Sprzątanie zasobów
 }
+
 
 int main() {
     //############################## Obsługa sygnału
@@ -47,8 +45,8 @@ int main() {
     saKill.sa_handler = handleSignalKill;
     saKill.sa_flags = 0;
     sigemptyset(&saKill.sa_mask);
-    if(sigaction(SIGNALKILL, &saKill, NULL) == -1){
-        perror("Błąd SIGNALKILL");
+    if (sigaction(SIGINT, &saKill, NULL) == -1) {
+        perror("[lotnisko] Error setting signal handler");
         return 1;
     }
 
@@ -106,7 +104,7 @@ int main() {
         struct passenger p;
         ssize_t bytesRead = read(fifoSend, &p, sizeof(struct passenger));
         if (bytesRead < sizeof(struct passenger)) {
-            perror("Error reading from FIFO");
+            perror("Error reading from FIFO lotnisko");
             exit(EXIT_FAILURE);
         }
         if (pthread_mutex_lock(&list_mutex) != 0) {
@@ -143,17 +141,7 @@ int main() {
         pthread_mutex_unlock(&list_mutex);
     }
 
-    // Wait for threads to finish
-    for (int i = 0; i < 3; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-    // Close the FIFO
-    close(fifoSend);
-
-    // Remove FIFO
-    unlink(FIFO_NAME);
-
+    cleanupResources();
     return 0;
 }
 

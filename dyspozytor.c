@@ -1,12 +1,11 @@
 #include <pthread.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/types.h>
 #include <stdatomic.h>
 #include "funkcje.h"
 
 int shmIOPassenger, semSemforyPassengerID, semSemforyAirplaneID, passenegerIsOverID, PassenegerInAirportID,
-        airplaneIsOverID, semID, shmPidAirplaneID, airplanesInAirportID, lotniskoPidID, allPassengersPidID, airplanesPidsID;
+        airplaneIsOverID, semID, shmPidAirplaneID, airplanesInAirportID, lotniskoPidID, allPassengersPidID, airplanesPidsID, SemaforyendID;
 int *IOPassenger, *PidAirplane, *airplanesInAirport, *PassenegerInAirport, *allPassengersPid, *airplanesPids, *
         lotniskoPid, *passenegerIsOver, *airplaneIsOver;
 pthread_t threadSignalPassengers, threadSignalAirplanes, threadKillPassengers;
@@ -67,7 +66,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej bramki wejścia");
         exit(EXIT_FAILURE);
     }
-    shmIOPassenger = shmget(kluczG, sizeof(int), IPC_CREAT | 0666);
+    shmIOPassenger = shmget(kluczG, sizeof(int), IPC_CREAT | 0600);
     if (shmIOPassenger == -1) {
         perror("Błąd tworzenia pamięci dzielonej bramki wejścia");
         exit(EXIT_FAILURE);
@@ -84,7 +83,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej PID samolotu");
         exit(EXIT_FAILURE);
     }
-    shmPidAirplaneID = shmget(kluczP, sizeof(int), IPC_CREAT | 0666);
+    shmPidAirplaneID = shmget(kluczP, sizeof(int), IPC_CREAT | 0600);
     if (shmPidAirplaneID == -1) {
         perror("Błąd tworzenia pamięci dzielonej PID samolotu");
         exit(EXIT_FAILURE);
@@ -101,7 +100,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej liczby samolotów");
         exit(EXIT_FAILURE);
     }
-    airplanesInAirportID = shmget(kluczN, sizeof(int), IPC_CREAT | 0666);
+    airplanesInAirportID = shmget(kluczN, sizeof(int), IPC_CREAT | 0600);
     if (airplanesInAirportID == -1) {
         perror("Błąd tworzenia pamięci dzielonej liczby samolotów");
         exit(EXIT_FAILURE);
@@ -114,7 +113,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej liczby pasażerów");
         exit(EXIT_FAILURE);
     }
-    PassenegerInAirportID = shmget(kluczO, 2 * sizeof(int), IPC_CREAT | 0666);
+    PassenegerInAirportID = shmget(kluczO, 2 * sizeof(int), IPC_CREAT | 0600);
     if (PassenegerInAirportID == -1) {
         perror("Błąd tworzenia pamięci dzielonej liczby pasażerów");
         exit(EXIT_FAILURE);
@@ -127,7 +126,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej PID-ów pasażerów");
         exit(EXIT_FAILURE);
     }
-    allPassengersPidID = shmget(kluczX, MAXPASSENGERS * sizeof(int), IPC_CREAT | 0666);
+    allPassengersPidID = shmget(kluczX, MAXPASSENGERS * sizeof(int), IPC_CREAT | 0600);
     if (allPassengersPidID == -1) {
         perror("Błąd tworzenia pamięci dzielonej PID-ów pasażerów");
         exit(EXIT_FAILURE);
@@ -140,7 +139,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej PID-ów samolotów");
         exit(EXIT_FAILURE);
     }
-    airplanesPidsID = shmget(kluczU, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0666);
+    airplanesPidsID = shmget(kluczU, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0600);
     if (airplanesPidsID == -1) {
         perror("Błąd tworzenia pamięci dzielonej PID-ów samolotów");
         exit(EXIT_FAILURE);
@@ -153,7 +152,7 @@ int main() {
         perror("Błąd ftok dla pamięci dzielonej PID lotniska");
         exit(EXIT_FAILURE);
     }
-    lotniskoPidID = shmget(kluczW, sizeof(int), IPC_CREAT | 0666);
+    lotniskoPidID = shmget(kluczW, sizeof(int), IPC_CREAT | 0600);
     if (lotniskoPidID == -1) {
         perror("Błąd tworzenia pamięci dzielonej PID lotniska");
         exit(EXIT_FAILURE);
@@ -165,7 +164,7 @@ int main() {
         perror("ftok");
         exit(EXIT_FAILURE);
     }
-    passenegerIsOverID = shmget(kluczV, sizeof(int), IPC_CREAT | 0666);
+    passenegerIsOverID = shmget(kluczV, sizeof(int), IPC_CREAT | 0600);
     if (passenegerIsOverID == -1) {
         printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
@@ -177,12 +176,25 @@ int main() {
         perror("ftok");
         exit(EXIT_FAILURE);
     }
-    airplaneIsOverID = shmget(kluczY, sizeof(int), IPC_CREAT | 0666);
+    airplaneIsOverID = shmget(kluczY, sizeof(int), IPC_CREAT | 0600);
     if (airplaneIsOverID == -1) {
         printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
     airplaneIsOver = (int *) shmat(airplaneIsOverID, NULL, 0);
+    // Semafory kończące
+    key_t keySemaforyend = ftok(".", 'T');
+    if (keySemaforyend == -1) {
+        perror("ftok");
+        exit(EXIT_FAILURE);
+    }
+
+    SemaforyendID = alokujSemafor(keySemaforyend, 1, IPC_CREAT | 0600);
+    if (SemaforyendID == -1) {
+        perror("alokujSemafor airplane");
+        exit(EXIT_FAILURE);
+    }
+
     airplaneIsOver[0] = 0;
     passenegerIsOver[0] = 0;
 
@@ -227,7 +239,7 @@ void *SignalAirplanes(void *arg) {
 }
 // Funkcja wątku wysyłającego sygnały kończące do pasażerów i samolotów
 void *signalPassengersKill(void *arg) {
-    sleep((rand() % 200) + 50);
+    sleep((rand() % 60) + 30);
     printf("Rozpoczynanie procedury kończenia pracy pasażerów i samolotów.\033[0;33m\n");
     passenegerIsOver[0] = 1;
     airplaneIsOver[0] = 1;
@@ -246,6 +258,7 @@ void *signalPassengersKill(void *arg) {
 }
 
 void cleanup() {
+    signalSemafor(SemaforyendID,0);
     // Usunięcie pamięci dzielonej
     shmdt(IOPassenger) == -1 || shmctl(shmIOPassenger, IPC_RMID, NULL);
     shmdt(PassenegerInAirport) == -1 || shmctl(PassenegerInAirportID, IPC_RMID, NULL);
@@ -253,9 +266,8 @@ void cleanup() {
     shmdt(airplanesPids) == -1 || shmctl(airplanesPidsID, IPC_RMID, NULL);
 
     // Usunięcie semaforów
-    zwolnijSemafor(semID,0);
     zwolnijSemafor(semSemforyPassengerID,0);
-    zwolnijSemafor(semSemforyAirplaneID,0);
+
 
     printf("Wszystkie zasoby zostały zwolnione.\n");
 }

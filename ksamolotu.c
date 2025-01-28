@@ -22,20 +22,20 @@ int count = 0, peopleInPid[MAXPASSENGERS];
 volatile atomic_int startFly = 0;
 
 static void cleanup();
-//Odbieranie sygnału leć
+
 void handleSignalFly(int sig) {
     printf("Odebrano sygnał %d Wykonuję akcję startu.\033[0;32m\n", sig);
     fflush(stdout);
-    atomic_store(&startFly, 1); // Bezpieczna aktualizacja flagi startu
+    atomic_store(&startFly, 1); // Safely update the value of startFly
 }
-//Odbieranie sygnału zakończ
+
 void handleSignalKill(int sig) {
     fflush(stdout);
     signalSemafor(semSemforyAirplaneID, 0);
     signalSemafor(semID, 3);
     if (count == 0) {
         printf("Samolot [%d] kończy loty\033[0;32m\n", getpid());
-        atomic_fetch_sub(&airplanesInAirport[0], 1); // Zmniejszenie liczby samolotów na lotnisku
+        atomic_fetch_sub(&airplanesInAirport[0], 1); // Zmniejszenie liczby pasażerów
         if (airplanesInAirport[0] == 0) {
             cleanup();
         }
@@ -44,14 +44,14 @@ void handleSignalKill(int sig) {
 }
 
 int main() {
-    //############################## Konfiguracja obsługi sygnałów
+    //############################## Obsługa sygnału
     struct sigaction saFly, saKill;
 
     saFly.sa_handler = handleSignalFly;
     saFly.sa_flags = 0;
     sigemptyset(&saFly.sa_mask);
     if (sigaction(SIGNALFLY, &saFly, NULL) == -1) {
-        perror("Błąd konfiguracji SIGNALFLY");
+        perror("Błąd SIGNALFLY");
         return 1;
     }
 
@@ -59,7 +59,7 @@ int main() {
     saKill.sa_flags = 0;
     sigemptyset(&saKill.sa_mask);
     if (sigaction(SIGNALKILL, &saKill, NULL) == -1) {
-        perror("Błąd konfiguracji SIGNALKILL");
+        perror("Błąd SIGINT");
         _exit(1);
     }
 
@@ -68,139 +68,140 @@ int main() {
 
     key_t kluczA = ftok(".", 'A');
     if (kluczA == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
 
-    // Inicjalizacja semaforów
+    // Dołączanie się do istniejących semaforów
     const int N = 4;
     semID = alokujSemafor(kluczA, N, 0);
     if (semID == -1) {
-        perror("Błąd alokacji semafora");
+        perror("alokuj Semafor");
         exit(EXIT_FAILURE);
     }
-    // Pamięć dzielona dla wagi samolotu
+    // Pamiec dzielona waga
     key_t kluczC = ftok(".", 'C');
     if (kluczC == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    shmID = shmget(kluczC, sizeof(int), IPC_CREAT | 0666);
+    shmID = shmget(kluczC, sizeof(int), IPC_CREAT | 0600);
     if (shmID == -1) {
-        printf("Błąd pamięci dzielonej samolotu\n");
+        printf("blad pamieci dzielodznej samolotu\n");
         exit(1);
     }
     memory = (int *) shmat(shmID, NULL, 0);
     if (memory[0] == 0 || memory[0] < 0) {
         memory[0] = md;
     }
-    // Kolejka komunikatów do komunikacji z pasażerami
+    // Klucz do kolejki komunikatów wysanie do samolotu
     key_t kluczH = ftok(".", 'H');
     if (kluczH == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    msgSamolotID = msgget(kluczH, IPC_CREAT | 0666);
+    msgSamolotID = msgget(kluczH, IPC_CREAT | 0600);
     if (msgSamolotID == -1) {
-        perror("Błąd tworzenia kolejki komunikatów");
+        perror("msgget");
         exit(EXIT_FAILURE);
     }
-    // Pamięć dzielona dla maksymalnej liczby pasażerów
+    //pamiec dzielona ilosc ludzi
     key_t kluczD = ftok(".", 'D');
     if (kluczD == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    shmIDAmountOfPeople = shmget(kluczD, sizeof(int), IPC_CREAT | 0666);
+    shmIDAmountOfPeople = shmget(kluczD, sizeof(int), IPC_CREAT | 0600);
     if (shmIDAmountOfPeople == -1) {
-        printf("Błąd pamięci dzielonej samolotu\n");
+        printf("blad pamieci dzielodznej samolotu\n");
         exit(1);
     }
     memoryAmountPeople = (int *) shmat(shmIDAmountOfPeople, NULL, 0);
     if (memoryAmountPeople[0] == 0 || memoryAmountPeople[0] < 0) {
         memoryAmountPeople[0] = amountOfPassengers;
     }
-    // Pamięć dzielona dla aktualnej liczby pasażerów na pokładzie
+    //pamiec dzielona ludzi na pokladzie samolotu
     key_t kluczE = ftok(".", 'E');
     if (kluczE == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    shmPeopleInID = shmget(kluczE, sizeof(int), IPC_CREAT | 0666);
+    shmPeopleInID = shmget(kluczE, sizeof(int), IPC_CREAT | 0600);
     if (shmPeopleInID == -1) {
-        printf("Błąd pamięci dzielonej pasażerów\n");
+        printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
     memoryPeopleIn = (int *) shmat(shmPeopleInID, NULL, 0);
     if (memoryPeopleIn == (void *) -1) {
-        perror("Błąd podłączenia pamięci");
+        perror("shmat");
         exit(1);
     }
-    // Inicjalizacja pamięci dzielonej dla PID-ów samolotów
+    //---------------------------------------------------- Inicjalizacja pamięć dzieloną P, zapisuje pid samolotow.
     key_t kluczP = ftok(".", 'P');
     if (kluczP == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    shmPidAirplaneID = shmget(kluczP, sizeof(int), IPC_CREAT | 0666);
+    shmPidAirplaneID = shmget(kluczP, sizeof(int), IPC_CREAT | 0600);
     if (shmPidAirplaneID == -1) {
-        printf("Błąd pamięci dzielonej PID-ów samolotów\n");
+        printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
     PidAirplane = (int *) shmat(shmPidAirplaneID, NULL, 0);
     if (PidAirplane[0] == 0 || PidAirplane[0] < 0) {
         PidAirplane[0] = getpid();
     }
-    // Inicjalizacja pamięci dzielonej dla liczby samolotów na lotnisku
+    //---------------------------------------------------- Inicjalizacja pamięć dzieloną P, ilosc samolotow ktore letaja
     key_t kluczN = ftok(".", 'N');
     if (kluczN == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    airplanesInAirportID = shmget(kluczN, sizeof(int), IPC_CREAT | 0666);
+    airplanesInAirportID = shmget(kluczN, sizeof(int), IPC_CREAT | 0600);
     if (airplanesInAirportID == -1) {
-        printf("Błąd pamięci dzielonej dla samolotów\n");
-        printf("Samolot kończy %d loty", getpid());
+        printf("Blad pamieci dzielonej pasazerow\n");
+        printf("samolot konczy %d loty", getpid());
         exit(1);
     }
     airplanesInAirport = (int *) shmat(airplanesInAirportID, NULL, 0);
-    // Pamięć dzielona dla PID-ów aktywnych samolotów
+    //--------------------------------------------------- pamiec dzielona pidy samolotow klucz U
     key_t kluczU = ftok(".", 'U');
     if (kluczU == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    int airplanesPidsID = shmget(kluczU, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0666);
+    int airplanesPidsID = shmget(kluczU, MAXAIRPLANES * sizeof(int), IPC_CREAT | 0600);
     if (airplanesPidsID == -1) {
-        printf("Błąd pamięci dzielonej PID-ów\n");
+        printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
     airplanesPids = (int *) shmat(airplanesPidsID, NULL, 0);
-    // Inicjalizacja semaforów dla synchronizacji samolotów
+    // Semafory K wewnatrz samolotu
+
     key_t keySemforyAirport = ftok(".", 'K');
     if (keySemforyAirport == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
 
     semSemforyAirplaneID = alokujSemafor(keySemforyAirport, 1, 0);
     if (semSemforyAirplaneID == -1) {
-        perror("Błąd alokacji semafora samolotu");
+        perror("alokujSemafor samolot");
         exit(EXIT_FAILURE);
     }
-    // Pamięć dzielona dla flagi zakończenia lotów
+    //---------------------------------------------------- Inicjalizacja pamięć dzieloną Y, informacja o zamknieciu samolotu
     key_t kluczY = ftok(".", 'Y');
     if (kluczY == -1) {
-        perror("Błąd generacji klucza");
+        perror("ftok");
         exit(EXIT_FAILURE);
     }
-    airplaneIsOverID = shmget(kluczY, sizeof(int), IPC_CREAT | 0666);
+    airplaneIsOverID = shmget(kluczY, sizeof(int), IPC_CREAT | 0600);
     if (airplaneIsOverID == -1) {
-        printf("Błąd pamięci dzielonej flagi\n");
+        printf("Blad pamieci dzielonej pasazerow\n");
         exit(1);
     }
     airplaneIsOver = (int *) shmat(airplaneIsOverID, NULL, 0);
-
+    // Semafory kończące
     safewaitsemafor(semSemforyAirplaneID, 0, 0);
     airplanesPids[airplanesInAirport[0]] = getpid();
     atomic_fetch_add(&airplanesInAirport[0], 1);
@@ -230,7 +231,8 @@ int main() {
                     if (errno == EINTR) {
                         goto fly;
                     } else {
-                        perror("Błąd odbioru komunikatu");
+                        // Inny błąd
+                        perror("msgrcv");
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -241,7 +243,7 @@ int main() {
             }
             fly:
             if (startFly == 1) {
-                atomic_store(&startFly, 0); // Reset flagi startu
+                atomic_store(&startFly, 0); // Safely update the value of startFly = 0;
             }
             printf("Samolot [%d] startuje, posiada %d osób na maksymalną ilość %d\033[0;32m\n", getpid(),memoryPeopleIn[0],memoryAmountPeople[0]);
             fflush(stdout);
@@ -267,7 +269,7 @@ int main() {
 }
 
 void cleanup() {
-    // Odłączanie pamięci dzielonych
+    // Odłączanie pamięci dzielonej
     if (memory != NULL) {
         shmdt(memory);
         memory = NULL;
@@ -292,7 +294,7 @@ void cleanup() {
         msgSamolotID = -1;
     }
 
-    // Usuwanie pamięci dzielonych
+    // Usuwanie pamięci dzielonej
     if (shmID != -1) {
         shmctl(shmID, IPC_RMID, NULL);
         shmID = -1;

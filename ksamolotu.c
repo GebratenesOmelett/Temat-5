@@ -189,7 +189,7 @@ int main() {
         perror("alokujSemafor samolot");
         exit(EXIT_FAILURE);
     }
-    //---------------------------------------------------- Inicjalizacja pamięć dzieloną Y, informacja o zamknieciu samolotu
+    // Inicjalizacja pamięć dzieloną Y, informacja o zamknieciu samolotu
     key_t kluczY = ftok(".", 'Y');
     if (kluczY == -1) {
         perror("ftok");
@@ -224,6 +224,7 @@ int main() {
         while (airplaneIsOver[0] == 0) {
             if ((memoryPeopleIn[0] < memoryAmountPeople[0] && (rand() % 100 + 1) < 99) && startFly == 0) {
                 signalSemafor(semID, 2);
+                //odczytywanie pasażera
                 ssize_t ret = msgrcv(msgSamolotID, &msgFromPassenger, sizeof(struct passenger), 2, 0);
 
 

@@ -16,18 +16,24 @@
 #define SIGNALKILL SIGUSR2
 
 int createAndInitializeSemaphores(int semaphoreCount);
+
 int createAndInitializeSemaphorePassenger(int semaphoreCount);
+
 int createAndInitializeSemaphoreAirplane(int semaphoreCount);
+
 int createAndInitializeSemaphoreEnd(int semaphoreCount);
-void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID,int SemaforyendID);
-void* zbieraj_procesy(void* arg);
+
+void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID, int SemaforyendID);
+
+void *zbieraj_procesy(void *arg);
+
 int *passenegerIsOver;
 int passenegerIsOverID;
 
 int main(void) {
     pthread_t thread;
 
-    //---------------------------------------------------- Inicjalizacja pamięci dzielonej V, informacja o zamknięciu lotniska
+    // Inicjalizacja pamięci dzielonej V, informacja o zamknięciu lotniska
     key_t kluczV = ftok(".", 'V');
     if (kluczV == -1) {
         perror("ftok");
@@ -94,17 +100,17 @@ int main(void) {
     }
     pthread_join(thread, NULL);
 
-    safewaitsemafor(SemaforyendID,0,0);
-    safewaitsemafor(SemaforyendID,0,0);
+    safewaitsemafor(SemaforyendID, 0, 0);
+    safewaitsemafor(SemaforyendID, 0, 0);
     printf("Main: wszystkie procesy zakończyły działanie. Czyszczenie zasobów...\n");
-    cleanup(semID, semSemforyPassengerID, semSemforyAirplaneID,SemaforyendID);
+    cleanup(semID, semSemforyPassengerID, semSemforyAirplaneID, SemaforyendID);
     printf("Main: zasoby zostały wyczyszczone.\n");
     return 0;
 }
 
 // Funkcja wątku zbierającego procesy potomne
-void* zbieraj_procesy(void* arg) {
-    (void)arg; // Nieużywany argument
+void *zbieraj_procesy(void *arg) {
+    (void) arg; // Nieużywany argument
     while (1) {
         pid_t pid = wait(NULL);
         if (pid == -1) {
@@ -119,11 +125,11 @@ void* zbieraj_procesy(void* arg) {
     return NULL;
 }
 
-void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID,int SemaforyendID) {
-    zwolnijSemafor(semID,0);
-    zwolnijSemafor(semSemforyPassengerID,0);
-    zwolnijSemafor(semSemforyAirplaneID,0);
-    zwolnijSemafor(SemaforyendID,0);
+void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID, int SemaforyendID) {
+    zwolnijSemafor(semID, 0);
+    zwolnijSemafor(semSemforyPassengerID, 0);
+    zwolnijSemafor(semSemforyAirplaneID, 0);
+    zwolnijSemafor(SemaforyendID, 0);
 
     shmdt(passenegerIsOver);
     shmctl(passenegerIsOverID, IPC_RMID, NULL);
@@ -179,6 +185,7 @@ int createAndInitializeSemaphoreAirplane(int semaphoreCount) {
     inicjalizujSemafor(semSemforyAirplaneID, 0, 0);
     return semSemforyAirplaneID;
 }
+
 int createAndInitializeSemaphoreEnd(int semaphoreCount) {
     key_t keySemaforyend = ftok(".", 'T');
     if (keySemaforyend == -1) {

@@ -1,52 +1,117 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
+#include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
 #include "funkcje.h"
-#include <sys/ipc.h>
-#include <sys/sem.h>
 
-#define SG1 SIGUSR1
-#define SG2 SIGUSR2
+#define MAXAIRPLANES 10
+#define MAXPASSENGERS 100
 
-#define SEMAPHORE_COUNT 4
+#define SIGNALFLY SIGUSR1
+#define SIGNALKILL SIGUSR2
 
-// Tablica globalna PID-ów procesów potomnych
-pid_t pids[SEMAPHORE_COUNT];
+int createAndInitializeSemaphores(int semaphoreCount);
+int createAndInitializeSemaphorePassenger(int semaphoreCount);
+int createAndInitializeSemaphoreAirplane(int semaphoreCount);
+void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID);
+int *passenegerIsOver;
+int passenegerIsOverID;
 
-void handleSignalKill(int sig) {
-    for (int i = 0; i < SEMAPHORE_COUNT; i++) {
-        if (pids[i] > 0) {
-            printf("Wysyłanie sygnału SIGNALKILL do procesu PID: %d\n", pids[i]);
-            if (kill(pids[i], SIGUSR2) == -1) {
-                perror("Nie udało się wysłać sygnału");
-            }
+int main(void) {
+    //---------------------------------------------------- Inicjalizacja pamięć dzieloną V, informacja o zamknieciu lotniska
+    key_t kluczV = ftok(".", 'V');
+    if (kluczV == -1) {
+        perror("ftok");
+        exit(EXIT_FAILURE);
+    }
+    passenegerIsOverID = shmget(kluczV, sizeof(int), IPC_CREAT | 0666);
+    if (passenegerIsOverID == -1) {
+        printf("Blad pamieci dzielonej pasazerow\n");
+        exit(1);
+    }
+    passenegerIsOver = (int *) shmat(passenegerIsOverID, NULL, 0);
+
+    int semID = createAndInitializeSemaphores(4);
+    int semSemforyAirplaneID = createAndInitializeSemaphoreAirplane(1);
+    int semSemforyPassengerID = createAndInitializeSemaphorePassenger(1);
+
+    printf("Main: tworzenie procesu dyspozytora...\n");
+    pid_t pid_dyspozytor = fork();
+    if (pid_dyspozytor == 0) {
+        execl("./dyspozytor", "dyspozytor", NULL);
+        perror("Nie udało się uruchomić dyspozytor");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Main: tworzenie procesu lotnisko...\n");
+    pid_t pid_lotnisko = fork();
+    if (pid_lotnisko == 0) {
+        execl("./lotnisko", "lotnisko", NULL);
+        perror("Nie udało się uruchomić lotnisko");
+        exit(EXIT_FAILURE);
+    }
+
+    const int NUM_KSAMALOTU_PROCESSES = MAXAIRPLANES;
+    for (int i = 0; i < NUM_KSAMALOTU_PROCESSES; i++) {
+        pid_t pid_ksamolotu = fork();
+        if (pid_ksamolotu == 0) {
+            execl("./ksamolotu", "ksamolotu", NULL);
+            perror("Nie udało się uruchomić kapitana samolotu");
+            exit(EXIT_FAILURE);
         }
     }
+
+    printf("Main: tworzenie procesów pasażerów...\n");
+    signalSemafor(semID, 3); // Zwolnij semafor, aby ksamolotu mogli czytać do FIFO
+
+    const int NUM_PASAZER_PROCESSES = MAXPASSENGERS;
+    for (int i = 0; i < NUM_PASAZER_PROCESSES; i++) {
+        if (passenegerIsOver[0] == 0){
+            pid_t pid_pasazer = fork();
+            if (pid_pasazer == 0) {
+                execl("./pasazer", "pasazer", NULL);
+                perror("Nie udało się uruchomić pasazer");
+                exit(EXIT_FAILURE);
+            }
+            usleep((rand() % 1000000) + 100000);
+        }
+        else {
+            break;
+        }
+    }
+
+    for (int i = 0; i < 1 + 1 + NUM_PASAZER_PROCESSES + NUM_KSAMALOTU_PROCESSES; i++) {
+        wait(NULL);
+    }
+
+    printf("Main: wszystkie procesy zakończyły działanie. Czyszczenie zasobów...\n");
+    cleanup(semID, semSemforyPassengerID, semSemforyAirplaneID);
+    printf("Main: zasoby zostały wyczyszczone.\n");
+    return 0;
 }
 
-void initializeSignalHandling() {
-    struct sigaction saCtrlC;
-    saCtrlC.sa_handler = handleSignalKill;
-    saCtrlC.sa_flags = 0;
-    sigemptyset(&saCtrlC.sa_mask);
+void cleanup(int semID, int semSemforyPassengerID, int semSemforyAirplaneID) {
+    zwolnijSemafor(semID,0);
+    zwolnijSemafor(semSemforyPassengerID,0);
+    zwolnijSemafor(semSemforyAirplaneID,0);
 
-    if (sigaction(SIGINT, &saCtrlC, NULL) == -1) {
-        perror("Błąd SIGINT");
-        _exit(1);
-    }
+    shmdt(passenegerIsOver);
+    shmctl(passenegerIsOverID, IPC_RMID, NULL);
+    printf("Cleanup zakończony.\n");
 }
 
 int createAndInitializeSemaphores(int semaphoreCount) {
     key_t key;
-    int semID;
 
     if ((key = ftok(".", 'A')) == -1) {
         perror("Błąd ftok");
         _exit(2);
     }
 
-    semID = alokujSemafor(key, semaphoreCount, IPC_CREAT | 0666);
+    const int semID = alokujSemafor(key, semaphoreCount, IPC_CREAT | 0666);
     for (int i = 0; i < semaphoreCount; i++) {
         inicjalizujSemafor(semID, i, 0);
     }
@@ -55,66 +120,34 @@ int createAndInitializeSemaphores(int semaphoreCount) {
     return semID;
 }
 
-pid_t startProcess(const char *programName) {
-    pid_t pid = fork();
-
-    if (pid == 0) {
-        execl(programName, programName, NULL);
-        perror("Nie udało się uruchomić programu");
-        _exit(1);
-    } else if (pid < 0) {
-        perror("Błąd podczas tworzenia procesu");
-        _exit(1);
+int createAndInitializeSemaphorePassenger(int semaphoreCount) {
+    key_t keySemforyPassenger = ftok(".", 'R');
+    if (keySemforyPassenger == -1) {
+        perror("ftok");
+        exit(EXIT_FAILURE);
     }
 
-    return pid;
+    const int semSemforyPassengerID = alokujSemafor(keySemforyPassenger, 1, IPC_CREAT | 0666);
+    if (semSemforyPassengerID == -1) {
+        perror("alokujSemafor passenger");
+        exit(EXIT_FAILURE);
+    }
+    inicjalizujSemafor(semSemforyPassengerID, 0, 0);
+    return semSemforyPassengerID;
 }
 
-void clean(int semID) {
-    // Usuwanie semaforów
-    if (zwolnijSemafor(semID,0) == -1) {
-        perror("Nie udało się usunąć semaforów");
-    } else {
-        printf("Semafory usunięte pomyślnie.\n");
+int createAndInitializeSemaphoreAirplane(int semaphoreCount) {
+    key_t keySemforyAirport = ftok(".", 'K');
+    if (keySemforyAirport == -1) {
+        perror("ftok");
+        exit(EXIT_FAILURE);
     }
 
-}
-
-int main() {
-    // Inicjalizacja obsługi sygnałów
-    initializeSignalHandling();
-
-    // Tworzenie i inicjalizacja semaforów
-    int semID = createAndInitializeSemaphores(SEMAPHORE_COUNT);
-
-    // Uruchamianie procesów potomnych
-    pids[0] = startProcess("./pasazer");
-    pids[1] = startProcess("./ksamolotu");
-    pids[2] = startProcess("./dyspozytor");
-    pids[3] = startProcess("./lotnisko");
-
-    // Wyświetlanie PID-ów procesów potomnych
-    printf("PID procesów: \n");
-    printf("Pasazer: %d\n", pids[0]);
-    printf("Ksamolotu: %d\n", pids[1]);
-    printf("Dyspozytor: %d\n", pids[2]);
-    printf("Lotnisko: %d\n", pids[3]);
-
-    // Podnoszenie semafora i oczekiwanie na zakończenie procesów
-    signalSemafor(semID, 1);
-
-    for (int i = 0; i < SEMAPHORE_COUNT; i++) {
-        wait(NULL);
+    const int semSemforyAirplaneID = alokujSemafor(keySemforyAirport, 1, IPC_CREAT | 0666);
+    if (semSemforyAirplaneID == -1) {
+        perror("alokujSemafor airplane");
+        exit(EXIT_FAILURE);
     }
-
-    // Wywołanie clean przed zakończeniem programu
-    clean(semID);
-
-    // Wyświetlenie komunikatów o zakończeniu procesów
-    printf("Program lotnisko zakończył działanie.\n");
-    printf("Program pasazer zakończył działanie.\n");
-    printf("Program ksamolotu zakończył działanie.\n");
-    printf("Program dyspozytor zakończył działanie.\n");
-
-    return 0;
+    inicjalizujSemafor(semSemforyAirplaneID, 0, 0);
+    return semSemforyAirplaneID;
 }

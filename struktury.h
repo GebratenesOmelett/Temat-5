@@ -1,3 +1,7 @@
+#ifndef STRUKTURY_H
+#define STRUKTURY_H
+
+#endif //STRUKTURY_H
 #include <stdbool.h>
 
 struct passenger{
@@ -11,15 +15,7 @@ struct passenger{
     int airplaneNumber;
 };
 
-struct airplane{
-    int Md;
-    int amountOfPassengers;
 
-};
-struct thread_data {
-    int id;
-    int fd;  // Deskryptor pliku FIFO
-};
 
 struct Node {
     struct passenger* passenger;
@@ -29,5 +25,9 @@ struct Node {
 struct messagePassenger {
     long mtype;       // Typ komunikatu
     int mvalue;  // Treść komunikatu
+};
+struct messagePassengerAirport {
+    long mtype;                  // Typ komunikatu
+    struct passenger passenger; // Dane pasażera
 };
 

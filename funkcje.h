@@ -7,21 +7,20 @@
 #include "struktury.h"
 #include <sys/stat.h>
 #include <errno.h>
-#include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <malloc.h>
 #include <signal.h>
 
-int randNumber(int x) {
-    srand(time(NULL));
+int randNumber(int x, int pid) {
+    srand(pid);
     return (rand() % x) + 1;
 }
-int getAirplane(int x){
-    srand(time(NULL));
+int getAirplane(int x, int pid){
+    srand(pid);
     return (rand() % x);
 }
-char randGender(){
+char randGender(int pid){
+    srand(pid);
     int x = (rand() % 100) + 1;
     if(x <=50){
         return 'M';
@@ -30,7 +29,8 @@ char randGender(){
         return 'F';
     }
 }
-bool randRare(){
+bool randRare(int pid){
+    srand(pid);
     int x = (rand() % 100) + 1;
     if(x <=5){
         return true;
@@ -49,7 +49,6 @@ void print_passenger(const struct passenger* p) {
     printf("Frustration Level: %d\n", p->frustration);
     printf("People Passed: %d\n", p->peoplePass);
     printf("Equipment status: %d\n", p->is_equipped);
-    printf("Airplane ticket: %d\n", p->airplaneNumber);
 }
 struct Node* createNode(struct passenger data) {
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
@@ -93,10 +92,10 @@ void append(struct Node** head, struct passenger data) {
 void printList(struct Node* head) {
     struct Node* temp = head;
     while (temp != NULL) {
-        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d, Equipped: %s, Airplane : %d\n",
+        printf("ID: %d, Baggage Weight: %.2f, Gender: %c, VIP: %s, Frustration: %d, People Pass: %d, Equipped: %s\n",
                temp->passenger->id, temp->passenger->baggage_weight, temp->passenger->gender,
                temp->passenger->is_vip ? "Yes" : "No", temp->passenger->frustration, temp->passenger->peoplePass,
-               temp->passenger->is_equipped ? "Yes" : "No", temp->passenger->airplaneNumber);
+               temp->passenger->is_equipped ? "Yes" : "No");
         temp = temp->next;
     }
     printf("NULL\n");
@@ -117,8 +116,7 @@ int alokujSemafor(key_t klucz, int number, int flagi)
     int semID;
     if ( (semID = semget(klucz, number, flagi)) == -1)
     {
-        perror("Blad semget (alokujSemafor): ");
-        exit(1);
+        return -1;
     }
     return semID;
 }
@@ -147,7 +145,6 @@ int waitSemafor(int semID, int number, int flags)
 
     if ( semop(semID, operacje, 1) == -1 )
     {
-        //perror("Blad semop (waitSemafor)");
         return -1;
     }
 
@@ -166,26 +163,15 @@ void signalSemafor(int semID, int number)
 
     return;
 }
-void createNewFifo(const char *fifoName){
-    struct stat stats;
-    if ( stat( fifoName, &stats ) < 0 )
-    {
-        if ( errno != ENOENT )          // ENOENT is ok, since we intend to delete the file anyways
-        {
-            perror( "stat failed" );    // any other error is a problem
-            return;
+void safewaitsemafor(int semID, int num, int op) {
+    while (waitSemafor(semID, num, op) == -1) {
+        if (errno == EINTR) {
+            // Przerwane przez sygnał – ponawiamy wywołanie
+            continue;
+        } else {
+            perror("waitSemafor error");
+            break;
         }
-    }
-    else                                // stat succeeded, so the file exists
-    {
-        if ( unlink( fifoName ) < 0 )   // attempt to delete the file
-        {
-            perror( "unlink failed" );  // the most likely error is EBUSY, indicating that some other process is using the file
-            return;
-        }
-    }
-    if (mkfifo(fifoName, 0666) == -1) {
-        perror("mkfifo");
     }
 }
 
